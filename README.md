@@ -98,11 +98,76 @@ sudo systemctl enable --now kewarmibot
 
 ## 🎮 Cara Pakai
 
+### Perintah Cepat
+
+| Command | Fungsi |
+|---|---|
+| `/start` | Dashboard utama |
+| `/status` | Dashboard latency + status cookie |
+| `/config` | Atur hero, bracket, safety, pilih cookie |
+| `/war` | Trigger debug war (+20 detik, buat testing) |
+| `/riwayat` | Riwayat hasil war terakhir |
+
+### Alur Manual
+
 1. **`/start`** → Dashboard dengan status lengkap
 2. 🍪 **Tambah Cookie** → Input nama + paste token (token auto-delete dari chat)
 3. ⚙️ **War Config** → Pilih 2 cookie untuk war, atur hero/bracket/safety
 4. 🚀 **War Now (Debug)** → Test war +20 detik (untuk testing)
-5. ⏰ **Auto-War** → Aktifkan scheduler, biarkan bot war tiap 23:57 CST
+5. ⏰ **Auto-War** → Aktifkan scheduler, biarkan bot war tiap 23:57 CST Rekomendasi
+
+### ⏰ Auto-War: Cara Kerja
+
+Auto-war tidak mengirim request di jam 23:57. **Request dikirim tepat jam 00:00:00.000 CST**.
+
+Alur lengkapnya:
+
+```
+23:55 CST  → Notifikasi 5 menit warning via Telegram
+             (latensi terbaru, hero, bracket, safety)
+
+23:57 CST  → Persiapan dimulai:
+             1. Ukur latency 5× weighted median
+             2. Hitung bracket spread per hero
+             3. Spawn multiprocess, spin-lock nunggu target
+
+00:00 CST  → SEMUA HERO MELESAT BERSAMAAN
+             Presisi timing via spin-lock + perf_counter
+
+Setelah   → Hasil dikirim via Telegram:
+             - Per-cookie success rate + progress bar
+             - Detail per hero (sukses/gagal + drift ms)
+             - Auto simpan ke riwayat
+```
+
+**Timeout:** Scheduler memulai persiapan 3 menit sebelum midnight. Pastikan bot tetap jalan dan koneksi stabil di jam 23:55-00:01 CST.
+
+## ⏱️ Scheduler Jobs (Background)
+
+Bot menjalankan 5 background job otomatis. Semua waktu dalam **CST (Beijing/UTC+8)**.
+
+| Job | Jadwal | Fungsi |
+|---|---|---|
+| 📈 **Latency Monitor** | Setiap 15 menit | Ping server Xiaomi (raw socket) → simpan ke DB. Data dipakai sparkline di `/status` |
+| 🍪 **Cookie Auto-Refresh** | 10:00 CST | Refresh status semua cookie (ELIGIBLE/BLOCKED/APPROVED). Notify kalau ada yang gagal |
+| 🗄️ **DB Backup** | 02:00 CST | Copy `kewarmibot.db` → `data/backups/`. Keep 7 hari terakhir, hapus otomatis |
+| ⚠️ **War Countdown** | 23:55 CST | Kirim notifikasi 5 menit sebelum war (latensi, hero, bracket) |
+| ⚔️ **Auto-War** | 23:57 CST | Persiapkan + eksekusi tepat 00:00 CST. Hasil + error dikirim ke Telegram |
+
+### Cara Matikan/Hidupkan Scheduler Jobs
+
+Dari menu bot: **⏰ Auto-War** → toggle ON/OFF. Tapi ini hanya matikan auto-war, job lain (latency, refresh, backup, countdown) tetap jalan.
+
+Edit `src/scheduler_jobs.py` kalau perlu ubah jadwal — semua trigger pakai `CronTrigger` dengan timezone `Asia/Shanghai`.
+
+### Notifikasi Kegagalan
+
+Setiap job yang kritikal akan kirim notif kalau gagal:
+- Cookie refresh gagal → ada yang BLOCKED/EXPIRED
+- Auto-war crash → error detail dikirim
+- DB backup gagal → notifikasi error
+
+Latency monitor **tidak** kirim notif — cuma log ke journal.
 
 ---
 

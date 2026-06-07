@@ -679,6 +679,40 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await main_menu(update, context)
 
 
+# ─── Quick Commands —————————————————————————————————————
+
+async def _fake_query(update: Update, data: str):
+    """Create minimal fake callback_query for menu handlers."""
+    # Wrapper so reply_text works instead of edit_message_text
+    class FakeQuery:
+        data = data
+        answer = lambda *a, **kw: None
+        def __init__(self, msg):
+            self.message = msg
+        def edit_message_text(self, text, **kw):
+            return asyncio.ensure_future(self.message.reply_text(text, **kw))
+    update.callback_query = FakeQuery(update.message)
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/status — jump to status dashboard."""
+    _fake_query(update, "menu:status")
+    await menu_status(update, context)
+
+async def cmd_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/config — jump to war config."""
+    _fake_query(update, "menu:config")
+    await menu_config(update, context)
+
+async def cmd_war(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/war — trigger debug war."""
+    _fake_query(update, "menu:war_debug")
+    await war_debug(update, context)
+
+async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/riwayat — war history."""
+    _fake_query(update, "menu:history")
+    await menu_history(update, context)
+
 # ─── Application ───────────────────────────────────────
 
 def build_app() -> Application:
@@ -686,6 +720,10 @@ def build_app() -> Application:
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", start))
+    app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("config", cmd_config))
+    app.add_handler(CommandHandler("war", cmd_war))
+    app.add_handler(CommandHandler("riwayat", cmd_history))
 
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(cookie_add_start, pattern="^cookie:add$")],

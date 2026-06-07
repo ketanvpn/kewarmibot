@@ -21,4 +21,6 @@ data/*.log
 
 # OS
 .DS_Store
-Thumbs.db.gh-token
+Thumbs.db
+
+.gh-token

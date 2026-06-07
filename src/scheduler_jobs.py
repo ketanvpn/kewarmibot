@@ -11,7 +11,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from src.config import settings
 from src.db import AsyncSessionLocal, WarHistoryModel, LatencyLogModel, CookieModel
-from src.cookie_service import get_cookie_token
+from src.cookie_service import get_cookie_token, refresh_cookie_status
 from src.war_config_service import load_config
 from src.engine.api import measure_latency
 from src.engine.war import run_war_sync, WarConfig, WarResultReport, get_next_beijing_midnight_ms
@@ -187,5 +187,37 @@ def start_scheduler(get_notifier: Callable | None = None):
         replace_existing=True,
     )
 
+    # Daily cookie auto-refresh at 10:00 CST
+    async def _auto_refresh_cookies():
+        """Refresh status semua cookie setiap admin."""
+        for uid in settings.admin_ids:
+            async with AsyncSessionLocal() as session:
+                from sqlalchemy import select
+                r = await session.execute(
+                    select(CookieModel).where(CookieModel.owner_chat_id == str(uid))
+                )
+                cookies = list(r.scalars().all())
+                refreshed = 0
+                failed = 0
+                for c in cookies:
+                    try:
+                        await refresh_cookie_status(session, c.id, str(uid))
+                        refreshed += 1
+                    except Exception as e:
+                        logger.error(f"Auto-refresh failed for cookie {c.id} ({c.name}): {e}")
+                        failed += 1
+                await session.commit()
+                logger.info(f"Auto-refresh done for {uid}: {refreshed} ok, {failed} failed")
+                if _notifier and failed > 0:
+                    await _notifier(str(uid), f"🍪 <b>Auto-Refresh Cookie</b>\n\n✅ {refreshed} berhasil\n❌ {failed} gagal\n\nCek menu Cookies untuk detail.")
+
+    scheduler.add_job(
+        _auto_refresh_cookies,
+        trigger=CronTrigger(hour=10, minute=0, timezone="Asia/Shanghai"),
+        id="cookie_auto_refresh",
+        name="Cookie Auto Refresh",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Scheduler started: latency monitor (15min) + auto-war (23:57 CST) + countdown (23:55 CST)")
+    logger.info("Scheduler started: latency monitor (15min) + cookie refresh (10:00 CST) + auto-war (23:57 CST) + countdown (23:55 CST)")

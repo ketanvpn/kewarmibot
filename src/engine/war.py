@@ -165,7 +165,7 @@ class WarResultReport:
             if r.success:
                 lines.append(f"✅ {r.cookie_name}-{r.hero_id:02d}: <b>{r.msg}</b> 🎉")
             else:
-                drift_s = f" (+{r.drift_ms}ms)" if r.drift_ms else ""
+                drift_s = f" (+{r.drift_ms}ms)" if r.drift_ms is not None else ""
                 lines.append(f"❌ {r.cookie_name}-{r.hero_id:02d}: {r.msg}{drift_s}")
 
         # ── FOOTER ──

@@ -1,5 +1,6 @@
 """Xiaomi API interactions — cookie validation, war send."""
 
+import gc
 import json
 import socket
 import ssl
@@ -7,6 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+import ntplib
 import requests
 
 USER_AGENT = "okhttp/4.12.0"
@@ -77,6 +79,36 @@ def measure_latency(samples: int = 5) -> int:
     return int(times[len(times) // 2])
 
 
+def get_ntp_offset() -> int:
+    """Sync with NTP servers. Returns offset in milliseconds."""
+    client = ntplib.NTPClient()
+    for server in ["pool.ntp.org", "id.pool.ntp.org", "time.google.com"]:
+        try:
+            r = client.request(server, version=3, timeout=5)
+            return int(r.offset * 1000)
+        except Exception:
+            continue
+    return 0
+
+
+def _get_core_ids() -> list[int]:
+    """Detect performance cores via cpufreq (>2GHz)."""
+    cores = []
+    cpu_dir = "/sys/devices/system/cpu/"
+    import os
+    n = os.cpu_count() or 1
+    for i in range(n):
+        try:
+            with open(f"{cpu_dir}cpu{i}/cpufreq/cpuinfo_max_freq") as f:
+                maxf = int(f.read().strip())
+            if maxf >= 2_000_000:
+                cores.append(i)
+        except Exception:
+            continue
+    cores.sort()
+    return cores
+
+
 def send_war_request(
     cookie: str,
     hero_id: int,
@@ -84,8 +116,17 @@ def send_war_request(
     base_time_ms: int,
     perf_base_ns: int,
     ntp_offset: int,
+    core_id: int | None = None,
 ) -> WarResult:
     """Send a single war request at target_time_ms (± spin-wait)."""
+    # Core affinity — pin to performance core
+    if core_id is not None:
+        import os
+        try:
+            os.sched_setaffinity(0, {core_id})
+        except Exception:
+            pass
+
     payload_str = '{"is_retry": false}'
     raw_http = (
         f"POST /bbs/api/global/apply/bl-auth HTTP/1.1\r\n"
@@ -114,17 +155,21 @@ def send_war_request(
                 else:
                     break
 
-            # Spin-lock
-            while (base_time_ms + (time.perf_counter_ns() - perf_base_ns) // 1_000_000 + ntp_offset) < target_time_ms:
-                pass
+            # Spin-lock — disable GC to prevent jitter
+            gc.disable()
+            try:
+                while (base_time_ms + (time.perf_counter_ns() - perf_base_ns) // 1_000_000 + ntp_offset) < target_time_ms:
+                    pass
 
-            ssock.sendall(raw_http)
-            drift = (
-                base_time_ms
-                + (time.perf_counter_ns() - perf_base_ns) // 1_000_000
-                + ntp_offset
-                - target_time_ms
-            )
+                ssock.sendall(raw_http)
+                drift = (
+                    base_time_ms
+                    + (time.perf_counter_ns() - perf_base_ns) // 1_000_000
+                    + ntp_offset
+                    - target_time_ms
+                )
+            finally:
+                gc.enable()
 
             # Parse response
             resp_bytes = ssock.recv(4096)

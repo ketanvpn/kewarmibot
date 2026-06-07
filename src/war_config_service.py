@@ -26,6 +26,9 @@ async def save_config(
     hero_per_cookie: int,
     bracket_factor: float,
     safety_margin: int,
+    war_hour: int = 0,
+    war_minute: int = 0,
+    war_tz: str = "Asia/Shanghai",
 ) -> WarConfigModel:
     """Create or update active config. cookie_ids clamped to MAX_COOKIES_PER_WAR."""
     from datetime import datetime
@@ -42,6 +45,9 @@ async def save_config(
         existing.hero_per_cookie = hero_per_cookie
         existing.bracket_factor = bracket_factor
         existing.safety_margin = safety_margin
+        existing.war_hour = war_hour
+        existing.war_minute = war_minute
+        existing.war_tz = war_tz
         existing.updated_at = datetime.utcnow()
         config = existing
     else:
@@ -50,6 +56,9 @@ async def save_config(
             hero_per_cookie=hero_per_cookie,
             bracket_factor=bracket_factor,
             safety_margin=safety_margin,
+            war_hour=war_hour,
+            war_minute=war_minute,
+            war_tz=war_tz,
             owner_chat_id=owner_chat_id,
             active=True,
         )
@@ -71,6 +80,9 @@ async def load_config(session: AsyncSession, owner_chat_id: str) -> dict:
             "bracket_factor": settings.war_bracket_factor_default,
             "safety_margin": settings.war_safety_margin_default,
             "cookie_ids": [],
+            "war_hour": 0,
+            "war_minute": 0,
+            "war_tz": "Asia/Shanghai",
         }
 
     return {
@@ -78,4 +90,7 @@ async def load_config(session: AsyncSession, owner_chat_id: str) -> dict:
         "bracket_factor": config.bracket_factor,
         "safety_margin": config.safety_margin,
         "cookie_ids": json.loads(config.cookie_ids) if config.cookie_ids else [],
+        "war_hour": getattr(config, "war_hour", 0),
+        "war_minute": getattr(config, "war_minute", 0),
+        "war_tz": getattr(config, "war_tz", "Asia/Shanghai"),
     }

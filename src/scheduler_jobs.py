@@ -101,6 +101,9 @@ async def _run_scheduled_war(owner_chat_id: str, notify: Callable | None = None)
         hero_per_cookie=cfg.get("hero_per_cookie", 6),
         bracket_factor=cfg["bracket_factor"],
         safety_margin=cfg["safety_margin"],
+        war_hour=cfg.get("war_hour", 0),
+        war_minute=cfg.get("war_minute", 0),
+        war_tz=cfg.get("war_tz", "Asia/Shanghai"),
         debug=False,
     )
 
@@ -138,8 +141,9 @@ def start_scheduler(get_notifier: Callable | None = None):
         replace_existing=True,
     )
 
-    # Auto-war daily at 23:57 Beijing time (3 minutes before midnight)
-    # We run pre-war for all admins
+    # Auto-war — 3 minutes before configured target time
+    # Default: 23:57 CST (for Xiaomi Community midnight reset)
+    # Change CRON expression below if you change war_time in config
     async def _war_for_all_admins():
         for uid in settings.admin_ids:
             try:
@@ -173,9 +177,13 @@ def start_scheduler(get_notifier: Callable | None = None):
                     latest_lat = result.scalar_one_or_none()
 
                 lat_text = f"{latest_lat.latency_ms}ms" if latest_lat else "unknown"
+                wh = cfg.get("war_hour", 0)
+                wm = cfg.get("war_minute", 0)
+                tz = cfg.get("war_tz", "Asia/Shanghai")
+                target_label = f"{wh:02d}:{wm:02d} {tz}"
                 msg = (
                     f"⚠️ <b>War Warning!</b>\n\n"
-                    f"Auto-war akan dimulai dalam ~5 menit (00:00 CST)\n\n"
+                    f"Auto-war dalam ~5 menit menuju {target_label}\n\n"
                     f"⚡ Latensi terakhir: {lat_text}\n"
                     f"🥊 Hero/cookie: {cfg.get('hero_per_cookie', 6)}\n"
                     f"📊 Bracket: {int(cfg['bracket_factor'] * 100)}%\n"

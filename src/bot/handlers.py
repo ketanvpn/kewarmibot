@@ -401,8 +401,14 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     cookie_count = len(selected_ids)
 
+    wh = cfg.get("war_hour", 0)
+    wm = cfg.get("war_minute", 0)
+    tz = cfg.get("war_tz", "Asia/Shanghai")
+    target_label = f"{wh:02d}:{wm:02d} {tz}"
+
     text = (
         f"⚙️ <b>War Config</b>\n\n"
+        f"⏰ Target: <b>{target_label}</b>\n"
         f"🥊 Hero per cookie: <b>{hero}</b>\n"
         f"📊 Bracket: <b>{int(cfg['bracket_factor'] * 100)}%</b>\n"
         f"🛡️ Safety: <b>{cfg['safety_margin']}ms</b>\n"
@@ -410,6 +416,7 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     )
 
     kb_rows = [
+        [InlineKeyboardButton(f"⏰ Target: {target_label}", callback_data="cfg:time")],
         [InlineKeyboardButton(f"🥊 Hero/cookie: {hero}", callback_data="cfg:hero")],
         [InlineKeyboardButton(f"📊 Bracket: {int(cfg['bracket_factor']*100)}%", callback_data="cfg:bracket")],
         [InlineKeyboardButton(f"🛡️ Safety: {cfg['safety_margin']}ms", callback_data="cfg:safety")],
@@ -470,32 +477,104 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     elif field == "toggle_cookie":
         cid = int(data[2])
         if cid in selected_ids:
-            selected_ids = [i for i in selected_ids if i != cid]  # un-toggle
+            selected_ids = [i for i in selected_ids if i != cid]
         else:
             if len(selected_ids) >= MAX_COOKIES_PER_WAR:
                 await query.answer(f"Maksimal {MAX_COOKIES_PER_WAR} cookie per war!", show_alert=True)
                 return
-            selected_ids = selected_ids + [cid]  # toggle ON
+            selected_ids = selected_ids + [cid]
         async with AsyncSessionLocal() as session:
             await save_config(session, _owner(update),
                               cookie_ids=selected_ids,
                               hero_per_cookie=cfg.get("hero_per_cookie", 6),
                               bracket_factor=cfg["bracket_factor"],
-                              safety_margin=cfg["safety_margin"])
+                              safety_margin=cfg["safety_margin"],
+                              war_hour=cfg.get("war_hour", 0),
+                              war_minute=cfg.get("war_minute", 0),
+                              war_tz=cfg.get("war_tz", "Asia/Shanghai"))
         await menu_config(update, context)
+
+    elif field == "time":
+        # Hour selector for war target
+        current_wh = cfg.get("war_hour", 0)
+        current_tz = cfg.get("war_tz", "Asia/Shanghai")
+        hour_btns = []
+        for row_h in range(0, 24, 3):
+            row = []
+            for h in range(row_h, min(row_h + 3, 24)):
+                row.append(InlineKeyboardButton(f"{'✅' if h == current_wh else ''}{h:02d}:00", callback_data=f"cfg:set:time:{h}:0"))
+            hour_btns.append(row)
+        kb_rows = hour_btns + [
+            [InlineKeyboardButton("🌍 Timezone", callback_data="cfg:tz")],
+            [InlineKeyboardButton("« Kembali", callback_data="menu:config")],
+        ]
+        await query.edit_message_text(
+            f"⏰ <b>Atur Jam Target</b>\n\nSaat ini: {current_wh:02d}:{cfg.get('war_minute',0):02d} {current_tz}\nPilih jam target war:",
+            reply_markup=InlineKeyboardMarkup(kb_rows),
+            parse_mode=ParseMode.HTML,
+        )
+
+    elif field == "tz":
+        # Timezone selector
+        current_tz = cfg.get("war_tz", "Asia/Shanghai")
+        tz_presets = [
+            ("Asia/Shanghai", "🇨🇳 Beijing (UTC+8)"),
+            ("Asia/Tokyo", "🇯🇵 Tokyo (UTC+9)"),
+            ("Asia/Jakarta", "🇮🇩 Jakarta (UTC+7)"),
+            ("Asia/Jayapura", "🇮🇩 Jayapura (UTC+9)"),
+            ("Asia/Makassar", "🇮🇩 Makassar (UTC+8)"),
+            ("Asia/Singapore", "🇸🇬 Singapore (UTC+8)"),
+            ("Asia/Seoul", "🇰🇷 Seoul (UTC+9)"),
+            ("Asia/Kolkata", "🇮🇳 India (UTC+5:30)"),
+            ("Europe/London", "🇬🇧 London (UTC+0)"),
+            ("America/New_York", "🇺🇸 New York (UTC-5)"),
+        ]
+        btns = [InlineKeyboardButton(f"{'✅ ' if t == current_tz else ''}{label}", callback_data=f"cfg:set:tz:{t}") for t, label in tz_presets]
+        kb_rows = [btns[i:i+2] for i in range(0, len(btns), 2)]
+        kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:config")])
+        await query.edit_message_text(f"🌍 Pilih Timezone (saat ini: {current_tz}):", reply_markup=InlineKeyboardMarkup(kb_rows))
 
     elif field == "set":
         param = data[2]
-        val = float(data[3]) if "." in data[3] else int(data[3])
-        hero = val if param == "hero" else cfg.get("hero_per_cookie", 6)
-        bracket = val if param == "bracket" else cfg["bracket_factor"]
-        safety = val if param == "safety" else cfg["safety_margin"]
-        async with AsyncSessionLocal() as session:
-            await save_config(session, _owner(update),
-                              cookie_ids=selected_ids,
-                              hero_per_cookie=hero,
-                              bracket_factor=bracket,
-                              safety_margin=safety)
+        if param == "tz":
+            val = data[3]
+            async with AsyncSessionLocal() as session:
+                await save_config(session, _owner(update),
+                                  cookie_ids=selected_ids,
+                                  hero_per_cookie=cfg.get("hero_per_cookie", 6),
+                                  bracket_factor=cfg["bracket_factor"],
+                                  safety_margin=cfg["safety_margin"],
+                                  war_hour=cfg.get("war_hour", 0),
+                                  war_minute=cfg.get("war_minute", 0),
+                                  war_tz=val)
+            await query.answer(f"Timezone: {val}", show_alert=False)
+        elif param == "time":
+            wh = int(data[3])
+            wm = int(data[4]) if len(data) > 4 else 0
+            async with AsyncSessionLocal() as session:
+                await save_config(session, _owner(update),
+                                  cookie_ids=selected_ids,
+                                  hero_per_cookie=cfg.get("hero_per_cookie", 6),
+                                  bracket_factor=cfg["bracket_factor"],
+                                  safety_margin=cfg["safety_margin"],
+                                  war_hour=wh,
+                                  war_minute=wm,
+                                  war_tz=cfg.get("war_tz", "Asia/Shanghai"))
+            await query.answer(f"Target: {wh:02d}:{wm:02d}", show_alert=False)
+        else:
+            val = float(data[3]) if "." in data[3] else int(data[3])
+            hero = val if param == "hero" else cfg.get("hero_per_cookie", 6)
+            bracket = val if param == "bracket" else cfg["bracket_factor"]
+            safety = val if param == "safety" else cfg["safety_margin"]
+            async with AsyncSessionLocal() as session:
+                await save_config(session, _owner(update),
+                                  cookie_ids=selected_ids,
+                                  hero_per_cookie=hero,
+                                  bracket_factor=bracket,
+                                  safety_margin=safety,
+                                  war_hour=cfg.get("war_hour", 0),
+                                  war_minute=cfg.get("war_minute", 0),
+                                  war_tz=cfg.get("war_tz", "Asia/Shanghai"))
         await menu_config(update, context)
 
 
@@ -529,6 +608,9 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         cookies=cookie_list,
         hero_per_cookie=cfg.get("hero_per_cookie", 6), bracket_factor=cfg["bracket_factor"],
         safety_margin=cfg["safety_margin"], debug=True,
+        war_hour=cfg.get("war_hour", 0),
+        war_minute=cfg.get("war_minute", 0),
+        war_tz=cfg.get("war_tz", "Asia/Shanghai"),
     )
 
     await query.edit_message_text(

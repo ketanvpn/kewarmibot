@@ -1,14 +1,64 @@
 """War Engine — N-cookie, hero-per-cookie architecture."""
 
+import logging
 import multiprocessing as mp
 import time
 import json
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 
-from src.engine.api import WarResult, send_war_request, measure_latency
+from src.engine.api import WarResult, send_war_request, measure_latency, get_ntp_offset, _get_core_ids
 
-BEIJING_TZ = timezone(timedelta(hours=8))
+logger = logging.getLogger(__name__)
+
+DEFAULT_WAR_TZ = "Asia/Shanghai"  # Beijing time, default for Xiaomi Community
+DEFAULT_WAR_HOUR = 0
+DEFAULT_WAR_MINUTE = 0
+
+def get_target_ms(war_hour: int = DEFAULT_WAR_HOUR, war_minute: int = DEFAULT_WAR_MINUTE, tz_name: str = DEFAULT_WAR_TZ) -> int:
+    """Calculate next target timestamp in ms. Supports any hour/minute/timezone."""
+    tz = timezone(timedelta(hours=timezone_offset(tz_name)))
+    now = datetime.now(tz)
+    target = now.replace(hour=war_hour, minute=war_minute, second=0, microsecond=0)
+    if now >= target:
+        target = target + timedelta(days=1)
+    return int(target.timestamp() * 1000)
+
+def timezone_offset(tz_name: str) -> int:
+    """Get timezone offset in hours from UTC for a given IANA timezone name."""
+    # Use pytz if available; fall back to hardcoded common ones
+    try:
+        import pytz
+        tz = pytz.timezone(tz_name)
+        now = datetime.now(tz)
+        return int(now.utcoffset().total_seconds() / 3600)
+    except ImportError:
+        pass
+    # Fallback: common timezones
+    offsets = {
+        "Asia/Shanghai": 8,
+        "Asia/Tokyo": 9,
+        "Asia/Seoul": 9,
+        "Asia/Singapore": 8,
+        "Asia/Jakarta": 7,
+        "Asia/Jayapura": 9,
+        "Asia/Makassar": 8,
+        "Asia/Bangkok": 7,
+        "Asia/Ho_Chi_Minh": 7,
+        "Asia/Kolkata": 5.5,
+        "Asia/Dubai": 4,
+        "Europe/London": 0,
+        "Europe/Berlin": 1,
+        "Europe/Moscow": 3,
+        "America/New_York": -5,
+        "America/Chicago": -6,
+        "America/Denver": -7,
+        "America/Los_Angeles": -8,
+        "America/Sao_Paulo": -3,
+        "Pacific/Auckland": 12,
+        "Australia/Sydney": 10,
+    }
+    return offsets.get(tz_name, 8)  # default to CST
 
 MAX_TOTAL_REQUESTS = 16  # hard cap
 MAX_COOKIES = 2
@@ -16,13 +66,8 @@ MAX_HERO_PER_COOKIE = 8
 
 
 def get_next_beijing_midnight_ms() -> int:
-    now = datetime.now(BEIJING_TZ)
-    today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if now >= today_midnight:
-        next_midnight = today_midnight + timedelta(days=1)
-    else:
-        next_midnight = today_midnight
-    return int(next_midnight.timestamp() * 1000)
+    """Deprecated. Use get_target_ms()."""
+    return get_target_ms(0, 0, "Asia/Shanghai")
 
 
 @dataclass
@@ -32,6 +77,9 @@ class WarConfig:
     bracket_factor: float = 0.8
     safety_margin: int = 30
     debug: bool = False
+    war_hour: int = 0       # target hour (0-23)
+    war_minute: int = 0     # target minute (0-59)
+    war_tz: str = "Asia/Shanghai"  # IANA timezone
 
 
 @dataclass
@@ -92,9 +140,10 @@ def _war_worker(
     base_time_ms: int,
     perf_base_ns: int,
     ntp_offset: int,
+    core_id: int | None,
     result_queue: mp.Queue,
 ) -> None:
-    result = send_war_request(cookie, hero_id, target_wave, base_time_ms, perf_base_ns, ntp_offset)
+    result = send_war_request(cookie, hero_id, target_wave, base_time_ms, perf_base_ns, ntp_offset, core_id)
     result.cookie_name = cookie_name
     result_queue.put(result)
 
@@ -138,11 +187,11 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
     latency_median = weighted[len(weighted) // 2]
     report.latency_median_ms = latency_median
 
-    # 2. Target
+    # 2. Target — use configurable war_time + timezone
     if config.debug:
         target_ms = int(time.time() * 1000) + 20000
     else:
-        target_ms = get_next_beijing_midnight_ms()
+        target_ms = get_target_ms(config.war_hour, config.war_minute, config.war_tz)
 
     base_send = target_ms - latency_median
     bracket_half = int(latency_median * config.bracket_factor) + config.safety_margin
@@ -160,26 +209,37 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
     else:
         offsets = [0]
 
-    # 4. Spawn: hero_0..hero_{hero_per-1} → cookie_0, hero_{hero_per}.. → cookie_1, etc
+    # 4. NTP sync
+    ntp_offset = get_ntp_offset()
+    logger.info(f"NTP offset: {ntp_offset}ms")
+
+    # 5. Detect performance cores
+    core_ids = _get_core_ids()
+    if core_ids:
+        logger.info(f"Performance cores: {core_ids}")
+    else:
+        logger.info("No big cores detected — default affinity")
+
+    # 6. Spawn: hero_0..hero_{hero_per-1} → cookie_0, hero_{hero_per}.. → cookie_1, etc
     result_queue: mp.Queue = mp.Queue()
     processes = []
     base_perf = time.perf_counter_ns()
     base_time = int(time.time() * 1000)
-    ntp_offset = 0
 
     for i, offset in enumerate(offsets):
         hero_id = i + 1
         cookie_idx = i // hero_per
         token, cname = config.cookies[cookie_idx]
         target_wave = base_send + offset
+        core_id = core_ids[i % len(core_ids)] if core_ids else None
         p = mp.Process(
             target=_war_worker,
-            args=(hero_id, target_wave, token, cname, base_time, base_perf, ntp_offset, result_queue),
+            args=(hero_id, target_wave, token, cname, base_time, base_perf, ntp_offset, core_id, result_queue),
         )
         processes.append(p)
         time.sleep(0.15)
 
-    # 5. Start
+    # 7. Start
     while int(time.time() * 1000) < base_send - 1000:
         time.sleep(0.05)
 
@@ -188,7 +248,7 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
     for p in processes:
         p.join()
 
-    # 6. Results
+    # 8. Results
     hero_results: list[WarResult] = []
     while not result_queue.empty():
         hero_results.append(result_queue.get())

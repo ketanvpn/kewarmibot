@@ -53,6 +53,9 @@ class WarConfigModel(BaseModel):
     cookie_ids: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # JSON list of int (max 2)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     owner_chat_id: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    war_hour: Mapped[int] = mapped_column(Integer, default=0)
+    war_minute: Mapped[int] = mapped_column(Integer, default=0)
+    war_tz: Mapped[str] = mapped_column(String(64), default="Asia/Shanghai")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )

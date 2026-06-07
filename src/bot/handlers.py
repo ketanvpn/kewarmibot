@@ -29,8 +29,8 @@ from src.cookie_service import (
     refresh_cookie_status,
     status_label,
 )
-from src.war_config_service import load_config, save_config, MAX_COOKIES_PER_WAR, MAX_HERO_PER_COOKIE, recommended_hero
-from src.engine.api import check_cookie_status, measure_latency
+from src.war_config_service import load_config, save_config, MAX_COOKIES_PER_WAR, recommended_hero
+from src.engine.api import measure_latency
 from src.engine.war import run_war_sync, WarConfig, WarResultReport, get_next_beijing_midnight_ms
 from src.scheduler_jobs import _get_latency_stats, _run_scheduled_war
 
@@ -123,7 +123,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Header text
     selected_count = len(selected_ids)
-    total_heroes = cfg.get("hero_per_cookie", 6) * max(selected_count, 1) if selected_count else 0
+    total_heroes = cfg.get("hero_per_cookie", 6) * selected_count
 
     text = (
         f"<b>{BOT_NAME}</b>\n"
@@ -388,8 +388,6 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     cfg = await _cfg_dict(update)
     cookies = await _cookies(update)
     selected_ids = cfg.get("cookie_ids", [])
-    hero = cfg.get("hero_per_cookie", 6)
-
     # Cookie lines
     cookie_lines = []
     for cid in selected_ids:
@@ -439,13 +437,6 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:main")])
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode=ParseMode.HTML)
 
-
-async def _persist_config(update: Update) -> None:
-    """Save current user_data config to DB."""
-    ctx = update.callback_query.data if hasattr(update, 'callback_query') else None
-    # We use context.user_data from menu_router
-    # Actually we need context here — let's refactor config_set to pass context
-    pass
 
 
 async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -612,7 +603,7 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         for cid in selected_ids:
             token = await get_cookie_token(session, cid, _owner(update))
             if token:
-                r = await session.execute(select(CookieModel).where(CookieModel.id == cid))
+                r = await session.execute(select(CookieModel).where(CookieModel.id == cid, CookieModel.owner_chat_id == _owner(update)))
                 c = r.scalar_one_or_none()
                 cookie_list.append((token, c.name if c else "Unknown"))
 
@@ -707,7 +698,7 @@ async def autowar_run_now(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         for cid in selected_ids:
             token = await get_cookie_token(session, cid, _owner(update))
             if token:
-                r = await session.execute(select(CookieModel).where(CookieModel.id == cid))
+                r = await session.execute(select(CookieModel).where(CookieModel.id == cid, CookieModel.owner_chat_id == _owner(update)))
                 c = r.scalar_one_or_none()
                 cookie_list.append((token, c.name if c else "Unknown"))
 

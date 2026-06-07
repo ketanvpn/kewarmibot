@@ -1,0 +1,4 @@
+ALTER TABLE war_config ADD COLUMN war_hour INTEGER DEFAULT 0;
+ALTER TABLE war_config ADD COLUMN war_minute INTEGER DEFAULT 0;
+ALTER TABLE war_config ADD COLUMN war_tz TEXT DEFAULT 'Asia/Shanghai';
+--- 2026-06-07

@@ -1,15 +1,15 @@
 #!/bin/bash
-# MCHRBL Bot - Setup Script
+# KeWarMiBot - Setup Script
 set -e
 
 echo "=========================================="
-echo "  MCHRBL Bot Setup"
+echo "  ⚔️ KeWarMiBot Setup"
 echo "=========================================="
 echo ""
 
 # 1. Python dependencies
 echo "[1/4] Installing Python dependencies..."
-pip install python-telegram-bot[job-queue] fastapi uvicorn pydantic pydantic-settings sqlalchemy aiosqlite apscheduler requests ntplib cryptography httpx
+pip install python-telegram-bot[job-queue] pydantic pydantic-settings sqlalchemy aiosqlite apscheduler requests ntplib cryptography httpx
 
 # 2. Generate encryption key
 echo ""
@@ -40,6 +40,6 @@ echo ""
 echo "Next steps:"
 echo "  1. Edit .env: set BOT_TOKEN from @BotFather"
 echo "  2. Run: python3 main.py"
-echo "  3. Or install service: sudo cp mchrbl-bot.service /etc/systemd/system/ && sudo systemctl enable --now mchrbl-bot.service"
+echo "  3. Or install service: sudo cp kewarmibot.service /etc/systemd/system/ && sudo systemctl enable --now kewarmibot"
 echo ""
 echo "IMPORTANT: Save your encryption key: ${ENC_KEY}"

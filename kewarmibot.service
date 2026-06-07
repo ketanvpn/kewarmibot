@@ -1,5 +1,5 @@
 [Unit]
-Description=MCHRBL Bot - Xiaomi Bootloader Unlock War Telegram Bot
+Description=⚔️ KeWarMiBot - Xiaomi Bootloader Unlock War Telegram Bot
 After=network.target
 
 [Service]

@@ -30,13 +30,9 @@ Bot Telegram untuk perang *unlock bootloader* Xiaomi dengan presisi milidetik. K
 ```
 ┌──────────────────────────────────────┐
 │           Telegram Bot               │
+│  python-telegram-bot (polling mode)  │
 │  Menu dashboard, cookie CRUD,        │
-│  war config visual, war trigger      │
-└──────────┬───────────────────────────┘
-           │ python-telegram-bot (polling)
-┌──────────▼───────────────────────────┐
-│         FastAPI Backend               │
-│  Webhook (optional) + scheduler       │
+│  war config, scheduler               │
 └──────────┬───────────────────────────┘
            │
 ┌──────────▼───────────────────────────┐
@@ -58,13 +54,13 @@ Bot Telegram untuk perang *unlock bootloader* Xiaomi dengan presisi milidetik. K
 
 ```bash
 # 1. Clone
-git clone https://github.com/ProjectRedis/kewarmibot.git
+git clone https://github.com/ketanvpn/kewarmibot.git
 cd kewarmibot
 
 # 2. Install
 pip install -e .
 # atau manual:
-pip install python-telegram-bot[job-queue] fastapi uvicorn pydantic pydantic-settings sqlalchemy aiosqlite apscheduler requests ntplib cryptography httpx
+pip install python-telegram-bot[job-queue] pydantic pydantic-settings sqlalchemy aiosqlite apscheduler requests cryptography httpx
 
 # 3. Generate encryption key
 openssl rand -hex 32

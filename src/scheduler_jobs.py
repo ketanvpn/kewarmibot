@@ -20,6 +20,7 @@ from sqlalchemy import select
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
+_notifier: Callable | None = None
 
 
 async def _save_latency():
@@ -69,18 +70,27 @@ async def _run_scheduled_war(owner_chat_id: str, notify: Callable | None = None)
         selected_ids = cfg.get("cookie_ids", [])
         if not selected_ids:
             logger.warning(f"Scheduled war skipped: no cookies for {owner_chat_id}")
+            if notify:
+                await notify(owner_chat_id, "⚠️ <b>Auto-War Dilewati</b>\n\nTidak ada cookie yang dipilih di War Config.")
             return
 
         cookie_list = []
         for cid in selected_ids:
-            token = await get_cookie_token(session, cid, owner_chat_id)
-            if token:
-                r = await session.execute(select(CookieModel).where(CookieModel.id == cid))
-                c = r.scalar_one_or_none()
-                cookie_list.append((token, c.name if c else "Unknown"))
+            try:
+                token = await get_cookie_token(session, cid, owner_chat_id)
+                if token:
+                    r = await session.execute(select(CookieModel).where(CookieModel.id == cid))
+                    c = r.scalar_one_or_none()
+                    cookie_list.append((token, c.name if c else "Unknown"))
+            except Exception as e:
+                logger.error(f"Failed to decrypt cookie {cid}: {e}")
+                if notify:
+                    await notify(owner_chat_id, f"⚠️ <b>Auto-War: Gagal decrypt cookie ID {cid}</b>\n\nError: {e}")
 
     if not cookie_list:
         logger.error("Scheduled war failed: cannot decrypt any cookies")
+        if notify:
+            await notify(owner_chat_id, "❌ <b>Auto-War Gagal</b>\n\nSemua cookie gagal didecrypt. Cek ulang cookie di menu.")
         return
 
     config = WarConfig(
@@ -129,7 +139,12 @@ def start_scheduler(get_notifier: Callable | None = None):
     # We run pre-war for all admins
     async def _war_for_all_admins():
         for uid in settings.admin_ids:
-            await _run_scheduled_war(str(uid))
+            try:
+                await _run_scheduled_war(str(uid), notify=_notifier)
+            except Exception as e:
+                logger.error(f"Auto-war crashed for {uid}: {e}")
+                if _notifier:
+                    await _notifier(str(uid), f"💥 <b>Auto-War Crash!</b>\n\nError: {e}")
 
     scheduler.add_job(
         _war_for_all_admins,

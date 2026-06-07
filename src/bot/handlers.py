@@ -29,7 +29,7 @@ from src.cookie_service import (
     refresh_cookie_status,
     status_label,
 )
-from src.war_config_service import load_config, save_config, MAX_COOKIES_PER_WAR, MAX_HERO_PER_COOKIE
+from src.war_config_service import load_config, save_config, MAX_COOKIES_PER_WAR, MAX_HERO_PER_COOKIE, COOKIE_MODES, hero_for_mode
 from src.engine.api import check_cookie_status, measure_latency
 from src.engine.war import run_war_sync, WarConfig, WarResultReport, get_next_beijing_midnight_ms
 from src.scheduler_jobs import _get_latency_stats, _run_scheduled_war
@@ -397,9 +397,12 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         emo = "✅" if c else "❓"
         cookie_lines.append(f"{emo} {c.name if c else 'Deleted'}")
     if not cookie_lines:
-        cookie_lines.append("❗ Belum pilih cookie (max 2)")
+        cookie_lines.append(f"❗ Belum pilih cookie (max {MAX_COOKIES_PER_WAR})")
 
     cookie_count = len(selected_ids)
+    # Auto-calc mode based on selected cookies; default to 2
+    mode = cookie_count if cookie_count in COOKIE_MODES else 2
+    hero = hero_for_mode(mode)
 
     wh = cfg.get("war_hour", 0)
     wm = cfg.get("war_minute", 0)
@@ -409,7 +412,7 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     text = (
         f"⚙️ <b>War Config</b>\n\n"
         f"⏰ Target: <b>{target_label}</b>\n"
-        f"🥊 Hero per cookie: <b>{hero}</b>\n"
+        f"🥊 Mode: <b>{mode}-cookie</b> ({hero} hero/cookie, total {mode * hero})\n"
         f"📊 Bracket: <b>{int(cfg['bracket_factor'] * 100)}%</b>\n"
         f"🛡️ Safety: <b>{cfg['safety_margin']}ms</b>\n"
         f"🍪 Cookies ({cookie_count}/{MAX_COOKIES_PER_WAR}):\n  " + "\n  ".join(cookie_lines)
@@ -417,15 +420,16 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     kb_rows = [
         [InlineKeyboardButton(f"⏰ Target: {target_label}", callback_data="cfg:time")],
-        [InlineKeyboardButton(f"🥊 Hero/cookie: {hero}", callback_data="cfg:hero")],
+        [InlineKeyboardButton(f"🍪 Mode: {mode}-cookie ({hero}h/c)", callback_data="cfg:mode")],
         [InlineKeyboardButton(f"📊 Bracket: {int(cfg['bracket_factor']*100)}%", callback_data="cfg:bracket")],
         [InlineKeyboardButton(f"🛡️ Safety: {cfg['safety_margin']}ms", callback_data="cfg:safety")],
     ]
 
-    # Cookie toggle with max 2 UI
+    # Cookie toggle with dynamic max
+    current_max = MAX_COOKIES_PER_WAR
     for c in cookies:
         in_war = c.id in selected_ids
-        disabled = not in_war and len(selected_ids) >= MAX_COOKIES_PER_WAR
+        disabled = not in_war and len(selected_ids) >= current_max
         label = f"{'✅' if in_war else ('🔒' if disabled else '⬜')} {c.name}"
         kb_rows.append([InlineKeyboardButton(label, callback_data=f"cfg:toggle_cookie:{c.id}")])
 
@@ -451,12 +455,36 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     selected_ids = cfg.get("cookie_ids", [])
 
     if field == "hero":
-        values = [2, 4, 6, 8]
-        current = cfg.get("hero_per_cookie", 6)
+        # Hero per cookie — depends on current mode
+        selected_count = len(selected_ids)
+        mode = selected_count if selected_count in COOKIE_MODES else 2
+        max_hero = MAX_TOTAL_REQUESTS // max(mode, 1)
+        values = [v for v in [1, 2, 3, 4, 6, 8] if v <= max_hero]
+        current = cfg.get("hero_per_cookie", hero_for_mode(mode))
         btns = [InlineKeyboardButton(f"{'✅ ' if v == current else ''}{v}", callback_data=f"cfg:set:hero:{v}") for v in values]
-        kb_rows = [btns[i:i+3] for i in range(0, len(btns), 3)]
+        kb_rows = [btns[i:i+4] for i in range(0, len(btns), 4)]
         kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:config")])
-        await query.edit_message_text(f"Pilih Hero (saat ini: {current}):", reply_markup=InlineKeyboardMarkup(kb_rows))
+        await query.edit_message_text(f"Pilih Hero per cookie (mode {mode}-cookie, max {max_hero}):", reply_markup=InlineKeyboardMarkup(kb_rows))
+
+    elif field == "mode":
+        # Cookie mode selector: 2/4/6
+        current_mode = len(selected_ids) if len(selected_ids) in COOKIE_MODES else 2
+        btns = []
+        for m, h in COOKIE_MODES.items():
+            has_cookies = len(cookies) >= m
+            label = f"{'✅ ' if m == current_mode else ''}{m}-cookie ({h}h/c)" + (" 🔒" if not has_cookies else "")
+            cb = f"cfg:set:mode:{m}" if has_cookies else "cfg:noop"
+            btns.append(InlineKeyboardButton(label, callback_data=cb))
+        kb_rows = [btns]
+        kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:config")])
+        await query.edit_message_text(
+            f"🍪 <b>Pilih Mode Cookie</b>\n\nSaat ini: {current_mode}-cookie ({hero_for_mode(current_mode)} hero/cookie)\nTotal tembakan: {current_mode * hero_for_mode(current_mode)}\n\nMode menentukan berapa cookie yang dipakai per war:",
+            reply_markup=InlineKeyboardMarkup(kb_rows),
+            parse_mode=ParseMode.HTML,
+        )
+
+    elif field == "noop":
+        await query.answer("❌ Tambah cookie dulu!", show_alert=True)
 
     elif field == "bracket":
         values = [0.5, 0.6, 0.7, 0.8, 1.0, 1.2, 1.5]
@@ -486,7 +514,7 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         async with AsyncSessionLocal() as session:
             await save_config(session, _owner(update),
                               cookie_ids=selected_ids,
-                              hero_per_cookie=cfg.get("hero_per_cookie", 6),
+                              hero_per_cookie=hero_for_mode(len(selected_ids) if len(selected_ids) in COOKIE_MODES else 2),
                               bracket_factor=cfg["bracket_factor"],
                               safety_margin=cfg["safety_margin"],
                               war_hour=cfg.get("war_hour", 0),
@@ -548,6 +576,24 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                                   war_minute=cfg.get("war_minute", 0),
                                   war_tz=val)
             await query.answer(f"Timezone: {val}", show_alert=False)
+        elif param == "mode":
+            # Set war mode: 2/4/6 cookies
+            m = int(data[3])
+            if m not in COOKIE_MODES:
+                await query.answer("Mode tidak valid!", show_alert=True)
+                return
+            # Trim selected_ids to new mode size
+            new_selected = selected_ids[:m]
+            async with AsyncSessionLocal() as session:
+                await save_config(session, _owner(update),
+                                  cookie_ids=new_selected,
+                                  hero_per_cookie=COOKIE_MODES[m],
+                                  bracket_factor=cfg["bracket_factor"],
+                                  safety_margin=cfg["safety_margin"],
+                                  war_hour=cfg.get("war_hour", 0),
+                                  war_minute=cfg.get("war_minute", 0),
+                                  war_tz=cfg.get("war_tz", "Asia/Shanghai"))
+            await query.answer(f"Mode: {m}-cookie ({COOKIE_MODES[m]}h/c)", show_alert=False)
         elif param == "time":
             wh = int(data[3])
             wm = int(data[4]) if len(data) > 4 else 0

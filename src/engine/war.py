@@ -61,7 +61,7 @@ def timezone_offset(tz_name: str) -> int:
     return offsets.get(tz_name, 8)  # default to CST
 
 MAX_TOTAL_REQUESTS = 16  # hard cap
-MAX_COOKIES = 2
+MAX_COOKIES = 6
 MAX_HERO_PER_COOKIE = 8
 
 
@@ -265,7 +265,7 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
     else:
         logger.info("No big cores detected — default affinity")
 
-    # 6. Spawn: hero_0..hero_{hero_per-1} → cookie_0, hero_{hero_per}.. → cookie_1, etc
+    # 6. Spawn: interleaved round-robin across cookies (hero 1→cookie0, hero 2→cookie1, ...)
     result_queue: mp.Queue = mp.Queue()
     processes = []
     base_perf = time.perf_counter_ns()
@@ -273,7 +273,7 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
 
     for i, offset in enumerate(offsets):
         hero_id = i + 1
-        cookie_idx = i // hero_per
+        cookie_idx = i % num_cookies
         token, cname = config.cookies[cookie_idx]
         target_wave = base_send + offset
         core_id = core_ids[i % len(core_ids)] if core_ids else None

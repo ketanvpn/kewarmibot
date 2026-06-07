@@ -5,8 +5,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.db import WarConfigModel
 
-MAX_COOKIES_PER_WAR = 2
+MAX_COOKIES_PER_WAR = 6
 MAX_HERO_PER_COOKIE = 8
+MAX_TOTAL_HEROES = 12
+
+# Allowed multi-cookie modes: num_cookies → hero_per_cookie
+COOKIE_MODES = {2: 6, 4: 3, 6: 2}
+
+def hero_for_mode(mode: int) -> int:
+    """Auto-calc hero_per_cookie for a given mode (2/4/6)."""
+    return COOKIE_MODES.get(mode, 6)
 
 
 async def get_active_config(session: AsyncSession, owner_chat_id: str) -> WarConfigModel | None:
@@ -30,13 +38,18 @@ async def save_config(
     war_minute: int = 0,
     war_tz: str = "Asia/Shanghai",
 ) -> WarConfigModel:
-    """Create or update active config. cookie_ids clamped to MAX_COOKIES_PER_WAR."""
+    """Create or update active config. cookie_ids clamped to MAX_COOKIES_PER_WAR.
+    hero_per_cookie auto-adjusted based on selected cookie count."""
     from datetime import datetime
     from src.config import settings
 
-    # Clamp
+    # Clamp + auto hero
     cookie_ids = cookie_ids[:MAX_COOKIES_PER_WAR]
-    hero_per_cookie = max(1, min(hero_per_cookie, MAX_HERO_PER_COOKIE))
+    num_cookies = len(cookie_ids)
+    if num_cookies in COOKIE_MODES:
+        hero_per_cookie = COOKIE_MODES[num_cookies]
+    else:
+        hero_per_cookie = max(1, min(hero_per_cookie, MAX_HERO_PER_COOKIE))
 
     existing = await get_active_config(session, owner_chat_id)
 

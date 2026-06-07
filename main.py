@@ -3,6 +3,7 @@
 import logging
 import os
 import asyncio
+import signal
 
 from telegram import Bot
 
@@ -56,9 +57,33 @@ async def main():
     start_scheduler(get_notifier=_notify)
     logger.info("Scheduler started")
 
-    # Keep alive
-    while True:
-        await asyncio.sleep(3600)
+    # Keep alive with graceful shutdown
+    stop_event = asyncio.Event()
+
+    def _shutdown_handler(signame: str):
+        logger.info(f"Received {signame}, shutting down gracefully...")
+        stop_event.set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, lambda s=sig.name: _shutdown_handler(s))
+        except NotImplementedError:
+            pass  # Windows fallback
+
+    try:
+        await stop_event.wait()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        logger.info("Shutting down scheduler...")
+        from src.scheduler_jobs import scheduler as sched
+        sched.shutdown(wait=False)
+        logger.info("Shutting down bot...")
+        await ptb_app.updater.stop()
+        await ptb_app.stop()
+        await ptb_app.shutdown()
+        logger.info("KeWarMiBot shutdown complete")
 
 
 if __name__ == "__main__":

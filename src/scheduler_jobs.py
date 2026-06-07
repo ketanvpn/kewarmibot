@@ -127,7 +127,7 @@ async def _run_scheduled_war(owner_chat_id: str, notify: Callable | None = None)
 
     # Notify if callback provided
     if notify:
-        await notify(report.format_report())
+        await notify(owner_chat_id, report.format_report())
 
 
 def start_scheduler(get_notifier: Callable | None = None):
@@ -141,60 +141,76 @@ def start_scheduler(get_notifier: Callable | None = None):
         replace_existing=True,
     )
 
-    # Auto-war — 3 minutes before configured target time
-    # Default: 23:57 CST (for Xiaomi Community midnight reset)
-    # Change CRON expression below if you change war_time in config
-    async def _war_for_all_admins():
+    # Dynamic auto-war checker — runs every minute, adapts to config war_time
+    _war_triggered_today: dict[str, bool] = {}  # prevent double-fire
+    _warned_today: dict[str, bool] = {}
+
+    async def _dynamic_war_checker():
+        """Check every minute: if 3 min before config target → war. 5 min → warn."""
         for uid in settings.admin_ids:
+            uid_str = str(uid)
             try:
-                await _run_scheduled_war(str(uid), notify=_notifier)
-            except Exception as e:
-                logger.error(f"Auto-war crashed for {uid}: {e}")
-                if _notifier:
-                    await _notifier(str(uid), f"💥 <b>Auto-War Crash!</b>\n\nError: {e}")
+                async with AsyncSessionLocal() as session:
+                    cfg = await load_config(session, uid_str)
 
-    scheduler.add_job(
-        _war_for_all_admins,
-        trigger=CronTrigger(hour=23, minute=57, timezone="Asia/Shanghai"),
-        id="auto_war",
-        name="Auto War Scheduler",
-        replace_existing=True,
-    )
-
-    # Pre-war countdown check at 23:55 (notify 5 min warning)
-    async def _war_countdown_notify():
-        """Send 5-min warning to admins."""
-        for uid in settings.admin_ids:
-            if get_notifier:
-                target = get_next_beijing_midnight_ms()
-                from src.db import AsyncSessionLocal as S, LatencyLogModel as LL
-                from sqlalchemy import select
-                async with S() as session:
-                    cfg = await load_config(session, str(uid))
-                    result = await session.execute(
-                        select(LL).order_by(LL.timestamp.desc()).limit(1)
-                    )
-                    latest_lat = result.scalar_one_or_none()
-
-                lat_text = f"{latest_lat.latency_ms}ms" if latest_lat else "unknown"
                 wh = cfg.get("war_hour", 0)
                 wm = cfg.get("war_minute", 0)
-                tz = cfg.get("war_tz", "Asia/Shanghai")
-                target_label = f"{wh:02d}:{wm:02d} {tz}"
-                msg = (
-                    f"⚠️ <b>War Warning!</b>\n\n"
-                    f"Auto-war dalam ~5 menit menuju {target_label}\n\n"
-                    f"⚡ Latensi terakhir: {lat_text}\n"
-                    f"🥊 Hero/cookie: {cfg.get('hero_per_cookie', 6)}\n"
-                    f"📊 Bracket: {int(cfg['bracket_factor'] * 100)}%\n"
-                )
-                await get_notifier(str(uid), msg)
+                tz_name = cfg.get("war_tz", "Asia/Shanghai")
+
+                # Calculate target in configured timezone
+                from datetime import timezone as dt_tz, timedelta
+                from src.engine.war import timezone_offset
+                offset_h = timezone_offset(tz_name)
+                tz = dt_tz(timedelta(hours=offset_h))
+                now = datetime.datetime.now(tz)
+                now_minutes = now.hour * 60 + now.minute
+                target_minutes = wh * 60 + wm
+
+                # Calculate minutes until target (wrap around midnight)
+                diff = target_minutes - now_minutes
+                if diff < 0:
+                    diff += 24 * 60
+
+                # Reset daily trackers at midnight local
+                if now_minutes < 1:
+                    _war_triggered_today.pop(uid_str, None)
+                    _warned_today.pop(uid_str, None)
+
+                # 5 min warning
+                if diff == 5 and not _warned_today.get(uid_str):
+                    _warned_today[uid_str] = True
+                    async with AsyncSessionLocal() as session:
+                        from sqlalchemy import select
+                        result = await session.execute(
+                            select(LatencyLogModel).order_by(LatencyLogModel.timestamp.desc()).limit(1)
+                        )
+                        latest_lat = result.scalar_one_or_none()
+                    lat_text = f"{latest_lat.latency_ms}ms" if latest_lat else "unknown"
+                    target_label = f"{wh:02d}:{wm:02d} {tz_name}"
+                    msg = (
+                        f"⚠️ <b>War Warning!</b>\n\n"
+                        f"Auto-war dalam ~5 menit menuju {target_label}\n\n"
+                        f"⚡ Latensi terakhir: {lat_text}\n"
+                        f"🥊 Hero/cookie: {cfg.get('hero_per_cookie', 6)}\n"
+                        f"📊 Bracket: {int(cfg['bracket_factor'] * 100)}%\n"
+                    )
+                    if _notifier:
+                        await _notifier(uid_str, msg)
+
+                # 3 min trigger → execute war
+                if 0 < diff <= 3 and not _war_triggered_today.get(uid_str):
+                    _war_triggered_today[uid_str] = True
+                    logger.info(f"Dynamic war trigger for {uid_str}: {diff}min to {wh:02d}:{wm:02d} {tz_name}")
+                    await _run_scheduled_war(uid_str, notify=_notifier)
+
+            except Exception as e:
+                logger.error(f"Dynamic war checker error for {uid}: {e}")
 
     scheduler.add_job(
-        _war_countdown_notify,
-        trigger=CronTrigger(hour=23, minute=55, timezone="Asia/Shanghai"),
-        id="war_countdown",
-        name="War Countdown Notifier",
+        _dynamic_war_checker,
+        trigger=IntervalTrigger(minutes=1),
+        id="dynamic_war_checker",
+        name="Dynamic War Checker",
         replace_existing=True,
     )
 
@@ -275,4 +291,4 @@ def start_scheduler(get_notifier: Callable | None = None):
     )
 
     scheduler.start()
-    logger.info("Scheduler started: latency monitor + cookie refresh + DB backup (02:00) + auto-war + countdown")
+    logger.info("Scheduler started: latency monitor + dynamic war checker + cookie refresh + DB backup (02:00)")

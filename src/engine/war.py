@@ -98,37 +98,81 @@ class WarResultReport:
         return len(self.hero_results) - self.success_count
 
     def format_report(self) -> str:
-        lines = [
-            f"🎯 <b>Hasil War</b> — {self.started_at.strftime('%Y-%m-%d %H:%M:%S') if self.started_at else ''}",
-            f"⚡ Latency median: {self.latency_median_ms}ms",
-            f"👥 Cookie ({len(self.cookie_names)}): {', '.join(self.cookie_names)}",
-            f"🥊 Hero/cookie: {len(self.hero_results) // max(len(self.cookie_names), 1)}",
-            f"✅ Success: {self.success_count} | ❌ Fail: {self.fail_count}",
-            "",
-        ]
-
-        # Per-cookie stat
         from collections import defaultdict
-        cookie_stats = defaultdict(lambda: {"success": 0, "fail": 0})
+
+        started = self.started_at.strftime('%Y-%m-%d %H:%M:%S') if self.started_at else ''
+
+        # ── Per-cookie stats ──
+        cookie_stats = defaultdict(lambda: {"success": 0, "fail": 0, "codes": set(), "victory_heroes": []})
         for r in self.hero_results:
             cn = r.cookie_name or "?"
             if r.success:
                 cookie_stats[cn]["success"] += 1
+                cookie_stats[cn]["victory_heroes"].append(r.hero_id)
             else:
                 cookie_stats[cn]["fail"] += 1
+            cookie_stats[cn]["codes"].add(r.code)
 
-        for cn, stats in cookie_stats.items():
+        has_victory = any(s["success"] > 0 for s in cookie_stats.values())
+        has_near_miss = any(3 in s["codes"] for s in cookie_stats.values())  # code 3 = Kuota habis
+
+        lines = []
+
+        # ── VICTORY BANNER ──
+        if has_victory:
+            lines.append("🏆 <b>WAR BERHASIL!</b>")
+            for cn, stats in cookie_stats.items():
+                if stats["victory_heroes"]:
+                    hero_list = ", ".join(f"{cn}-{h:02d}" for h in stats["victory_heroes"])
+                    lines.append(f"🎉 Cookie <b>{cn}</b> dapat TIKET! ({hero_list})")
+            lines.append("")
+
+        # ── HEADER ──
+        lines.append(f"🎯 <b>Hasil War</b> — {started}")
+        lines.append(f"⚡ Latency median: {self.latency_median_ms}ms")
+        num_cookies = max(len(self.cookie_names), 1)
+        lines.append(f"👥 Cookie ({len(self.cookie_names)}): {', '.join(self.cookie_names)}")
+        lines.append(f"🥊 Hero/cookie: {len(self.hero_results) // num_cookies}")
+        lines.append(f"✅ Success: {self.success_count} | ❌ Fail: {self.fail_count}")
+        lines.append("")
+
+        # ── PER-COOKIE SUMMARY ──
+        for cn in (self.cookie_names or list(cookie_stats.keys())):
+            stats = cookie_stats.get(cn, {"success": 0, "fail": 0})
             total = stats["success"] + stats["fail"]
+            if total == 0:
+                continue
             rate = stats["success"] / total * 100 if total > 0 else 0
-            bar = "🟩" * max(1, round(rate / 20)) + "🟥" * (5 - max(1, round(rate / 20)))
-            lines.append(f"🍪 <b>{cn}</b>: {bar} {rate:.0f}% ({stats['success']}/{total})")
+            bar_len = 5
+            green = max(1, round(rate / 20))
+            red = bar_len - green
+            bar = "🟩" * green + "🟥" * red
+            prefix = "🏆 " if has_victory and stats["success"] > 0 else "🍪 "
+            lines.append(f"{prefix}<b>{cn}</b>: {bar} {rate:.0f}% ({stats['success']}/{total})")
 
         lines.append("")
-        lines.append("<b>Detail:</b>")
+
+        # ── DETAIL (tone-aware header) ──
+        if has_victory:
+            lines.append("⚔️ <b>Detail:</b>")
+        elif has_near_miss:
+            lines.append("⚠️ <b>Detail:</b>")
+        else:
+            lines.append("😔 <b>Detail:</b>")
+
         for r in self.hero_results:
-            emoji = "✅" if r.success else "❌"
-            drift_s = f" (drift: {r.drift_ms:+.1f}ms)" if r.drift_ms is not None else ""
-            lines.append(f"{emoji} {r.cookie_name}-{r.hero_id:02d}: {r.msg}{drift_s}")
+            if r.success:
+                lines.append(f"✅ {r.cookie_name}-{r.hero_id:02d}: <b>{r.msg}</b> 🎉")
+            else:
+                drift_s = f" (+{r.drift_ms}ms)" if r.drift_ms else ""
+                lines.append(f"❌ {r.cookie_name}-{r.hero_id:02d}: {r.msg}{drift_s}")
+
+        # ── FOOTER ──
+        if has_victory:
+            lines.append(f"\n🔥 <b>Total: {self.success_count} tiket berhasil didapat!</b>")
+        elif has_near_miss:
+            lines.append(f"\n⚠️ Kuota hampir habis — coba lagi reset berikutnya.")
+
         return "\n".join(lines)
 
 

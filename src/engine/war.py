@@ -241,15 +241,12 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
     base_send = target_ms - latency_median
     bracket_half = int(latency_median * config.bracket_factor) + config.safety_margin
 
-    # 3. Distribute offsets across ALL heroes (per-cookie, not shared)
+    # 3. Distribute offsets across ALL heroes (bracket + safety, no cancellation)
     offsets = []
+    # safety_margin ADDS to spread (not cancelled). Total window = 2*(bracket_half)
     if total_heroes > 1:
         for i in range(total_heroes):
-            offset = int(
-                -bracket_half
-                + config.safety_margin
-                + (2 * (bracket_half - config.safety_margin) * i) / (total_heroes - 1)
-            )
+            offset = int(-bracket_half + (2 * bracket_half * i) / (total_heroes - 1))
             offsets.append(offset)
     else:
         offsets = [0]

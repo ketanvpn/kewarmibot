@@ -24,6 +24,7 @@ class WarResult:
     tag: str
     msg: str
     drift_ms: float | None = None
+    cookie_name: str = ""
 
 
 async def check_cookie_status(cookie: str) -> dict[str, Any]:

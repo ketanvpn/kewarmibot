@@ -1,8 +1,11 @@
-"""Background scheduler: auto-war, latency monitor."""
+"""Background scheduler: auto-war, latency monitor, backup, cookie refresh."""
 
 import asyncio
 import datetime
 import logging
+import os
+import shutil
+import glob
 from typing import Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -109,7 +112,7 @@ async def _run_scheduled_war(owner_chat_id: str, notify: Callable | None = None)
         import json
         history = WarHistoryModel(
             started_at=report.started_at,
-            results=json.dumps([{"hero_id": r.hero_id, "success": r.success, "code": r.code, "msg": r.msg, "drift_ms": r.drift_ms} for r in report.hero_results]),
+            results=json.dumps([{"hero_id": r.hero_id, "success": r.success, "code": r.code, "msg": r.msg, "drift_ms": r.drift_ms, "cookie_name": r.cookie_name} for r in report.hero_results]),
             success_count=report.success_count,
             fail_count=report.fail_count,
             latency_median_ms=report.latency_median_ms,
@@ -219,5 +222,49 @@ def start_scheduler(get_notifier: Callable | None = None):
         replace_existing=True,
     )
 
+    # Daily DB backup at 02:00 CST
+    async def _backup_db():
+        """Backup database to data/backups/, keep 7 days."""
+        backup_dir = "data/backups"
+        os.makedirs(backup_dir, exist_ok=True)
+        db_path = "data/kewarmibot.db"
+
+        if not os.path.exists(db_path):
+            logger.warning("DB backup skipped: database file not found")
+            return
+
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        dest = os.path.join(backup_dir, f"kewarmibot-{ts}.db")
+
+        try:
+            shutil.copy2(db_path, dest)
+            logger.info(f"DB backup created: {dest}")
+
+            # Clean up backups older than 7 days
+            pattern = os.path.join(backup_dir, "kewarmibot-*.db")
+            backups = sorted(glob.glob(pattern))
+            cutoff = datetime.datetime.now() - datetime.timedelta(days=7)
+            deleted = 0
+            for bkp in backups:
+                mtime = datetime.datetime.fromtimestamp(os.path.getmtime(bkp))
+                if mtime < cutoff:
+                    os.remove(bkp)
+                    deleted += 1
+            if deleted:
+                logger.info(f"Cleaned up {deleted} old backup(s)")
+        except Exception as e:
+            logger.error(f"DB backup failed: {e}")
+            if _notifier:
+                for uid in settings.admin_ids:
+                    await _notifier(str(uid), f"🗄️ <b>DB Backup Gagal!</b>\n\nError: {e}")
+
+    scheduler.add_job(
+        _backup_db,
+        trigger=CronTrigger(hour=2, minute=0, timezone="Asia/Shanghai"),
+        id="db_backup",
+        name="Daily DB Backup",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Scheduler started: latency monitor (15min) + cookie refresh (10:00 CST) + auto-war (23:57 CST) + countdown (23:55 CST)")
+    logger.info("Scheduler started: latency monitor + cookie refresh + DB backup (02:00) + auto-war + countdown")

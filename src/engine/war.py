@@ -58,10 +58,29 @@ class WarResultReport:
             f"✅ Success: {self.success_count} | ❌ Fail: {self.fail_count}",
             "",
         ]
+
+        # Per-cookie stat
+        from collections import defaultdict
+        cookie_stats = defaultdict(lambda: {"success": 0, "fail": 0})
+        for r in self.hero_results:
+            cn = r.cookie_name or "?"
+            if r.success:
+                cookie_stats[cn]["success"] += 1
+            else:
+                cookie_stats[cn]["fail"] += 1
+
+        for cn, stats in cookie_stats.items():
+            total = stats["success"] + stats["fail"]
+            rate = stats["success"] / total * 100 if total > 0 else 0
+            bar = "🟩" * max(1, round(rate / 20)) + "🟥" * (5 - max(1, round(rate / 20)))
+            lines.append(f"🍪 <b>{cn}</b>: {bar} {rate:.0f}% ({stats['success']}/{total})")
+
+        lines.append("")
+        lines.append("<b>Detail:</b>")
         for r in self.hero_results:
             emoji = "✅" if r.success else "❌"
             drift_s = f" (drift: {r.drift_ms:+.1f}ms)" if r.drift_ms is not None else ""
-            lines.append(f"{emoji} Hero-{r.hero_id:02d}: {r.msg}{drift_s}")
+            lines.append(f"{emoji} {r.cookie_name}-{r.hero_id:02d}: {r.msg}{drift_s}")
         return "\n".join(lines)
 
 
@@ -69,12 +88,14 @@ def _war_worker(
     hero_id: int,
     target_wave: int,
     cookie: str,
+    cookie_name: str,
     base_time_ms: int,
     perf_base_ns: int,
     ntp_offset: int,
     result_queue: mp.Queue,
 ) -> None:
     result = send_war_request(cookie, hero_id, target_wave, base_time_ms, perf_base_ns, ntp_offset)
+    result.cookie_name = cookie_name
     result_queue.put(result)
 
 
@@ -149,11 +170,11 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
     for i, offset in enumerate(offsets):
         hero_id = i + 1
         cookie_idx = i // hero_per
-        token, _ = config.cookies[cookie_idx]
+        token, cname = config.cookies[cookie_idx]
         target_wave = base_send + offset
         p = mp.Process(
             target=_war_worker,
-            args=(hero_id, target_wave, token, base_time, base_perf, ntp_offset, result_queue),
+            args=(hero_id, target_wave, token, cname, base_time, base_perf, ntp_offset, result_queue),
         )
         processes.append(p)
         time.sleep(0.15)

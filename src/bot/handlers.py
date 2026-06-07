@@ -515,7 +515,7 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         from src.db import WarHistoryModel
         history = WarHistoryModel(
             started_at=report.started_at,
-            results=_json.dumps([{"hero_id": r.hero_id, "success": r.success, "code": r.code, "msg": r.msg, "drift_ms": r.drift_ms} for r in report.hero_results]),
+            results=_json.dumps([{"hero_id": r.hero_id, "success": r.success, "code": r.code, "msg": r.msg, "drift_ms": r.drift_ms, "cookie_name": r.cookie_name} for r in report.hero_results]),
             success_count=report.success_count,
             fail_count=report.fail_count,
             latency_median_ms=report.latency_median_ms,
@@ -600,7 +600,7 @@ async def autowar_run_now(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         from src.db import WarHistoryModel
         history = WarHistoryModel(
             started_at=report.started_at,
-            results=json.dumps([{"hero_id": r.hero_id, "success": r.success, "code": r.code, "msg": r.msg, "drift_ms": r.drift_ms} for r in report.hero_results]),
+            results=json.dumps([{"hero_id": r.hero_id, "success": r.success, "code": r.code, "msg": r.msg, "drift_ms": r.drift_ms, "cookie_name": r.cookie_name} for r in report.hero_results]),
             success_count=report.success_count,
             fail_count=report.fail_count,
             latency_median_ms=report.latency_median_ms,

@@ -18,10 +18,12 @@ Bot Telegram untuk perang *unlock bootloader* Xiaomi dengan presisi milidetik. K
 | 📊 **Live Dashboard** | Status cookie (ELIGIBLE/BLOCKED/APPROVED), countdown reset harian, auto-war status |
 | ⚙️ **War Config** | Atur hero per cookie (2-8), bracket factor, safety margin — visual inline keyboard |
 | ⚔️ **Multi-Cookie War** | Maks 2 cookie per war. Hero per cookie = tembakan per akun full, bukan diencerkan |
-| ⏰ **Auto-War Scheduler** | War otomatis 23:57 CST tiap hari + notifikasi 5 menit sebelumnya |
+| ⏰ **Configurable Auto-War** | Target war bisa diatur jam + timezone (default 00:00 Beijing). Dynamic scheduler adaptif |
 | 📈 **Latency Monitor** | Ping server Xiaomi tiap 15 menit + sparkline grafik di status |
-| 📜 **War History** | Riwayat hasil war (success rate, latency, detail per hero) |
+| 📊 **Cookie Statistics** | Akumulasi success rate per cookie dari semua history. Tau cookie mana yang jago |
+| 📜 **War History** | Riwayat hasil war (success rate, latency, detail per hero + per-cookie progress bar) |
 | 🔐 **Security** | Cookie dienkripsi AES-256-GCM, token message auto-delete dari chat |
+| 🎯 **HFT Precision** | Core affinity, NTP sync (3 server), GC disable saat spin-lock — presisi milidetik |
 
 ---
 
@@ -32,13 +34,14 @@ Bot Telegram untuk perang *unlock bootloader* Xiaomi dengan presisi milidetik. K
 │           Telegram Bot               │
 │  python-telegram-bot (polling mode)  │
 │  Menu dashboard, cookie CRUD,        │
-│  war config, scheduler               │
+│  war config, scheduler, stats        │
 └──────────┬───────────────────────────┘
            │
 ┌──────────▼───────────────────────────┐
 │          War Engine                   │
 │  Multiprocess, raw socket HTTP,       │
 │  weighted median ping, bracket spread │
+│  NTP sync, core affinity, GC disable  │
 └──────────┬───────────────────────────┘
            │
 ┌──────────▼───────────────────────────┐
@@ -114,7 +117,7 @@ sudo systemctl enable --now kewarmibot
 2. 🍪 **Tambah Cookie** → Input nama + paste token (token auto-delete dari chat)
 3. ⚙️ **War Config** → Pilih 2 cookie untuk war, atur hero/bracket/safety
 4. 🚀 **War Now (Debug)** → Test war +20 detik (untuk testing)
-5. ⏰ **Auto-War** → Aktifkan scheduler, biarkan bot war tiap 23:57 CST
+5. ⏰ **Auto-War** → Aktifkan scheduler. Default target 00:00 Beijing. Bisa diganti jam + timezone di War Config
 
 ### 🍪 Cara Ambil Cookie Xiaomi Community
 
@@ -156,47 +159,49 @@ new_bbs_serviceToken=xxxxxxxxxxxxxxxxxxxx; cUserId=123456789; deviceId=xxxx-xxxx
 
 ### ⏰ Auto-War: Cara Kerja
 
-Auto-war tidak mengirim request di jam 23:57. **Request dikirim tepat jam 00:00:00.000 CST**.
+Target war bisa diatur di **⚙️ War Config → ⏰ Target**. Default 00:00 Asia/Shanghai (Xiaomi Community).
 
-Alur lengkapnya:
+Alur (dengan contoh target 00:00 Beijing):
 
 ```
-23:55 CST  → Notifikasi 5 menit warning via Telegram
-             (latensi terbaru, hero, bracket, safety)
+T-5 menit  → Notifikasi warning via Telegram
+             (latensi terbaru, hero, bracket, safety, target label)
 
-23:57 CST  → Persiapan dimulai:
-             1. Ukur latency 5× weighted median
-             2. Hitung bracket spread per hero
-             3. Spawn multiprocess, spin-lock nunggu target
+T-3 menit  → Persiapan dimulai:
+             1. NTP sync — kalibrasi clock ke 3 server
+             2. Ukur latency 5× weighted median
+             3. Hitung bracket spread per hero
+             4. Deteksi performance core → pin hero process
+             5. Spawn multiprocess, spin-lock nunggu target
+             6. GC disable — zero jitter saat spin-lock
 
-00:00 CST  → SEMUA HERO MELESAT BERSAMAAN
-             Presisi timing via spin-lock + perf_counter
+TARGET     → SEMUA HERO MELESAT BERSAMAAN
+             Presisi timing via spin-lock + perf_counter + NTP
 
-Setelah   → Hasil dikirim via Telegram:
+Setelah    → Hasil dikirim via Telegram:
              - Per-cookie success rate + progress bar
              - Detail per hero (sukses/gagal + drift ms)
              - Auto simpan ke riwayat
 ```
 
-**Timeout:** Scheduler memulai persiapan 3 menit sebelum midnight. Pastikan bot tetap jalan dan koneksi stabil di jam 23:55-00:01 CST.
+Scheduler mengecek tiap 1 menit apakah sudah waktunya war berdasarkan config. Gak perlu edit kode kalau ganti jam target.
 
 ## ⏱️ Scheduler Jobs (Background)
 
-Bot menjalankan 5 background job otomatis. Semua waktu dalam **CST (Beijing/UTC+8)**.
+Bot menjalankan 4 background job otomatis.
 
 | Job | Jadwal | Fungsi |
 |---|---|---|
 | 📈 **Latency Monitor** | Setiap 15 menit | Ping server Xiaomi (raw socket) → simpan ke DB. Data dipakai sparkline di `/status` |
-| 🍪 **Cookie Auto-Refresh** | 10:00 CST | Refresh status semua cookie (ELIGIBLE/BLOCKED/APPROVED). Notify kalau ada yang gagal |
-| 🗄️ **DB Backup** | 02:00 CST | Copy `kewarmibot.db` → `data/backups/`. Keep 7 hari terakhir, hapus otomatis |
-| ⚠️ **War Countdown** | 23:55 CST | Kirim notifikasi 5 menit sebelum war (latensi, hero, bracket) |
-| ⚔️ **Auto-War** | 23:57 CST | Persiapkan + eksekusi tepat 00:00 CST. Hasil + error dikirim ke Telegram |
+| 🎯 **Dynamic War Checker** | Setiap 1 menit | Cek apakah sudah T-5 menit (warning) atau T-3 menit (eksekusi war) dari target config. Adaptif terhadap `war_hour`/`war_minute`/`war_tz` |
+| 🍪 **Cookie Auto-Refresh** | 10:00 Asia/Shanghai | Refresh status semua cookie (ELIGIBLE/BLOCKED/APPROVED). Notify kalau ada yang gagal |
+| 🗄️ **DB Backup** | 02:00 Asia/Shanghai | Copy `kewarmibot.db` → `data/backups/`. Keep 7 hari terakhir, hapus otomatis |
 
 ### Cara Matikan/Hidupkan Scheduler Jobs
 
-Dari menu bot: **⏰ Auto-War** → toggle ON/OFF. Tapi ini hanya matikan auto-war, job lain (latency, refresh, backup, countdown) tetap jalan.
+Dari menu bot: **⏰ Auto-War** → toggle ON/OFF. Ini hanya matikan auto-war checker.
 
-Edit `src/scheduler_jobs.py` kalau perlu ubah jadwal — semua trigger pakai `CronTrigger` dengan timezone `Asia/Shanghai`.
+Edit `src/scheduler_jobs.py` kalau perlu ubah jadwal.
 
 ### Notifikasi Kegagalan
 

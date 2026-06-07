@@ -144,7 +144,8 @@ class WarResultReport:
                 continue
             rate = stats["success"] / total * 100 if total > 0 else 0
             bar_len = 5
-            green = max(1, round(rate / 20))
+            green = round(rate / 20)
+            green = max(0, min(green, bar_len))
             red = bar_len - green
             bar = "🟩" * green + "🟥" * red
             prefix = "🏆 " if has_victory and stats["success"] > 0 else "🍪 "

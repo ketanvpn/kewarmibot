@@ -114,7 +114,41 @@ sudo systemctl enable --now kewarmibot
 2. 🍪 **Tambah Cookie** → Input nama + paste token (token auto-delete dari chat)
 3. ⚙️ **War Config** → Pilih 2 cookie untuk war, atur hero/bracket/safety
 4. 🚀 **War Now (Debug)** → Test war +20 detik (untuk testing)
-5. ⏰ **Auto-War** → Aktifkan scheduler, biarkan bot war tiap 23:57 CST Rekomendasi
+5. ⏰ **Auto-War** → Aktifkan scheduler, biarkan bot war tiap 23:57 CST
+
+### 🍪 Cara Ambil Cookie Xiaomi Community
+
+Diperlukan cookie `cUserId`, `passToken`, dan `deviceId` dari situs Xiaomi Community.
+
+**Metode 1: Via Browser DevTools (Desktop)**
+
+1. Buka Chrome/Firefox, login ke https://account.xiaomi.com
+2. Buka https://c.mi.com/global → login dengan akun Xiaomi
+3. Tekan `F12` → tab **Application** (Chrome) atau **Storage** (Firefox)
+4. Di sidebar kiri: **Cookies → https://c.mi.com**
+5. Copy value dari cookie berikut:
+   - `cUserId`
+   - `passToken`
+   - `deviceId` (opsional, tapi disarankan)
+6. Gabungkan jadi satu string:
+   ```
+   cUserId=123456789; passToken=xxxxxxxxxxxx; deviceId=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+   ```
+7. Paste ke bot (token auto-delete + dienkripsi)
+
+**Metode 2: Via Kiwi Browser (Android)**
+
+1. Install [Kiwi Browser](https://play.google.com/store/apps/details?id=com.kiwibrowser.browser)
+2. Buka https://c.mi.com/global → login
+3. Tap `⋮` → **Developer Tools** → tab **Cookies**
+4. Cari dan copy `cUserId`, `passToken`, `deviceId`
+5. Gabungkan seperti format di atas, paste ke bot
+
+**Catatan:**
+- Cookie expire sekitar 30 hari, perlu update berkala
+- Gunakan cookie auto-refresh (10:00 CST) untuk monitor status
+- Jangan share cookie ke siapa pun — seperti password
+- Device ID penting untuk konsistensi fingerprint
 
 ### ⏰ Auto-War: Cara Kerja
 

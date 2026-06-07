@@ -175,6 +175,7 @@ async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             InlineKeyboardButton(c.name, callback_data=f"cookie:detail:{c.id}"),
             InlineKeyboardButton("🗑", callback_data=f"cookie:delete_confirm:{c.id}"),
         ])
+    kb_rows.append([InlineKeyboardButton("🔄 Refresh Semua Cookie", callback_data="cookie:refresh_all")])
     kb_rows.append([InlineKeyboardButton("➕ Tambah Cookie", callback_data="cookie:add")])
     kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:main")])
 
@@ -266,6 +267,35 @@ async def cookie_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     emoji, status = status_label(cookie)
     await query.edit_message_text(f"🔄 Status diperbarui!\n\n<b>{cookie.name}</b>: {emoji} {status}", parse_mode=ParseMode.HTML)
+
+async def cookie_refresh_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Refresh status semua cookie sekaligus."""
+    query = update.callback_query
+    await query.answer()
+    cookies = await _cookies(update)
+
+    if not cookies:
+        await query.edit_message_text("🍪 <b>Belum ada cookie.</b>", parse_mode=ParseMode.HTML)
+        return
+
+    await query.edit_message_text(f"🔄 <b>Refresh {len(cookies)} cookie...</b>\n\nMohon tunggu...", parse_mode=ParseMode.HTML)
+
+    ok, fail = 0, 0
+    lines = ["🔄 <b>Refresh Semua Cookie</b>\n"]
+    async with AsyncSessionLocal() as session:
+        for c in cookies:
+            try:
+                await refresh_cookie_status(session, c.id, _owner(update))
+                ok += 1
+                lines.append(f"✅ {c.name}")
+            except Exception as e:
+                fail += 1
+                lines.append(f"❌ {c.name}: {e}")
+        await session.commit()
+
+    lines.append(f"\n✅ {ok} berhasil • ❌ {fail} gagal")
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali ke Cookies", callback_data="menu:cookies")]])
+    await query.message.reply_text("\n".join(lines), reply_markup=kb, parse_mode=ParseMode.HTML)
 
 
 async def cookie_delete_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -638,9 +668,84 @@ async def menu_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         ts = h.started_at.strftime("%m/%d %H:%M") if h.started_at else "?"
         lines.append(f"• {ts} — ✅{rate} — {h.latency_median_ms}ms")
 
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:main")]])
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 Statistik Cookie", callback_data="menu:stats")],
+        [InlineKeyboardButton("« Kembali", callback_data="menu:main")],
+    ])
     await query.edit_message_text("\n".join(lines), reply_markup=kb, parse_mode=ParseMode.HTML)
 
+# ─── Cookie Statistics ─────────────────────────────────
+
+async def menu_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Akumulasi success rate per cookie dari semua history."""
+    query = update.callback_query
+    await query.answer()
+
+    from collections import defaultdict
+    cookie_stats = defaultdict(lambda: {"success": 0, "fail": 0})
+
+    async with AsyncSessionLocal() as session:
+        from src.db import WarHistoryModel, CookieModel
+        from sqlalchemy import select
+        r = await session.execute(
+            select(WarHistoryModel).order_by(WarHistoryModel.started_at.desc()).limit(200)
+        )
+        history = list(r.scalars().all())
+
+        # Fetch cookie names for lookup
+        cookies_result = await session.execute(
+            select(CookieModel).where(CookieModel.owner_chat_id == _owner(update))
+        )
+        cookies = {c.id: c.name for c in cookies_result.scalars().all()}
+
+    if not history:
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:history")]])
+        await query.edit_message_text("📊 <b>Statistik Cookie</b>\n\nBelum ada data war.", reply_markup=kb, parse_mode=ParseMode.HTML)
+        return
+
+    # Parse semua results JSON
+    for h in history:
+        if h.results:
+            import json as _j
+            try:
+                heroes = _j.loads(h.results)
+                for hero in heroes:
+                    cn = hero.get("cookie_name", "?")
+                    if hero.get("success"):
+                        cookie_stats[cn]["success"] += 1
+                    else:
+                        cookie_stats[cn]["fail"] += 1
+            except Exception:
+                pass
+
+    if not cookie_stats:
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:history")]])
+        await query.edit_message_text("📊 <b>Statistik Cookie</b>\n\nTidak ada data yang bisa diproses.", reply_markup=kb, parse_mode=ParseMode.HTML)
+        return
+
+    lines = [
+        "📊 <b>Statistik Cookie</b>",
+        f"📜 Dari {len(history)} sesi war terakhir\n",
+    ]
+
+    # Sort by total battles desc
+    sorted_stats = sorted(cookie_stats.items(), key=lambda x: x[1]["success"] + x[1]["fail"], reverse=True)
+
+    for cn, stats in sorted_stats:
+        total = stats["success"] + stats["fail"]
+        rate = stats["success"] / total * 100 if total > 0 else 0
+        bar = "🟩" * max(1, round(rate / 20)) + "🟥" * (5 - max(1, round(rate / 20)))
+        lines.append(f"🍪 <b>{cn}</b>: {bar} {rate:.0f}% ({stats['success']}/{total})")
+
+    total_success = sum(s["success"] for _, s in sorted_stats)
+    total_fail = sum(s["fail"] for _, s in sorted_stats)
+    total_all = total_success + total_fail
+    overall_rate = total_success / total_all * 100 if total_all > 0 else 0
+
+    lines.append(f"\n📈 <b>Overall:</b> {overall_rate:.0f}% ({total_success}/{total_all})")
+
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:history")]])
+    await query.edit_message_text("\n".join(lines), reply_markup=kb, parse_mode=ParseMode.HTML)
 
 # ─── Router ────────────────────────────────────────────
 
@@ -657,10 +762,13 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "menu:war_debug": war_debug,
         "menu:autowar": menu_autowar,
         "menu:history": menu_history,
+        "menu:stats": menu_stats,
     }
 
     if data in static_routes:
         await static_routes[data](update, context)
+    elif data == "cookie:refresh_all":
+        await cookie_refresh_all(update, context)
     elif data.startswith("cookie:detail:"):
         await cookie_detail(update, context)
     elif data.startswith("cookie:refresh:"):

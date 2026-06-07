@@ -51,7 +51,7 @@ def get_result_meaning(code: int) -> tuple[bool, str]:
     if code == 1:
         return True, "Tiket didapat!"
     if code == 2:
-        return False, "Sudah punya tiket"
+        return True, "Sudah punya tiket"
     if code == 3:
         return False, "Kuota habis"
     if code == 6:
@@ -182,11 +182,12 @@ def send_war_request(
                 code = -1
 
             success, msg = get_result_meaning(code)
+            tag = "Info" if code == 2 else ("Approved" if success else "Failed")
             return WarResult(
                 hero_id=hero_id,
                 success=success,
                 code=code,
-                tag="Approved" if success else "Failed",
+                tag=tag,
                 msg=msg,
                 drift_ms=drift,
             )

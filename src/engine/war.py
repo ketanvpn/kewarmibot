@@ -1,15 +1,12 @@
 """War Engine — N-cookie, hero-per-cookie architecture."""
 
-import logging
 import multiprocessing as mp
 import time
 import json
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 
-from src.engine.api import WarResult, send_war_request, measure_latency, get_ntp_offset, _get_core_ids
-
-logger = logging.getLogger(__name__)
+from src.engine.api import WarResult, send_war_request, measure_latency
 
 BEIJING_TZ = timezone(timedelta(hours=8))
 
@@ -95,10 +92,9 @@ def _war_worker(
     base_time_ms: int,
     perf_base_ns: int,
     ntp_offset: int,
-    core_id: int | None,
     result_queue: mp.Queue,
 ) -> None:
-    result = send_war_request(cookie, hero_id, target_wave, base_time_ms, perf_base_ns, ntp_offset, core_id)
+    result = send_war_request(cookie, hero_id, target_wave, base_time_ms, perf_base_ns, ntp_offset)
     result.cookie_name = cookie_name
     result_queue.put(result)
 
@@ -164,37 +160,26 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
     else:
         offsets = [0]
 
-    # 4. NTP sync
-    ntp_offset = get_ntp_offset()
-    logger.info(f"NTP offset: {ntp_offset}ms")
-
-    # 5. Detect performance cores
-    core_ids = _get_core_ids()
-    if core_ids:
-        logger.info(f"Performance cores detected: {core_ids}")
-    else:
-        logger.info("No performance cores detected — using default affinity")
-
-    # 6. Spawn: hero_0..hero_{hero_per-1} → cookie_0, hero_{hero_per}.. → cookie_1, etc
+    # 4. Spawn: hero_0..hero_{hero_per-1} → cookie_0, hero_{hero_per}.. → cookie_1, etc
     result_queue: mp.Queue = mp.Queue()
     processes = []
     base_perf = time.perf_counter_ns()
     base_time = int(time.time() * 1000)
+    ntp_offset = 0
 
     for i, offset in enumerate(offsets):
         hero_id = i + 1
         cookie_idx = i // hero_per
         token, cname = config.cookies[cookie_idx]
         target_wave = base_send + offset
-        core_id = core_ids[i % len(core_ids)] if core_ids else None
         p = mp.Process(
             target=_war_worker,
-            args=(hero_id, target_wave, token, cname, base_time, base_perf, ntp_offset, core_id, result_queue),
+            args=(hero_id, target_wave, token, cname, base_time, base_perf, ntp_offset, result_queue),
         )
         processes.append(p)
         time.sleep(0.15)
 
-    # 7. Start
+    # 5. Start
     while int(time.time() * 1000) < base_send - 1000:
         time.sleep(0.05)
 
@@ -203,7 +188,7 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
     for p in processes:
         p.join()
 
-    # 8. Results
+    # 6. Results
     hero_results: list[WarResult] = []
     while not result_queue.empty():
         hero_results.append(result_queue.get())

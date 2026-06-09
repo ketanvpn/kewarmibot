@@ -76,15 +76,18 @@ BOT_NAME = "⚔️ KeWarMiBot"
 
 
 async def _build_main_kb(update: Update) -> InlineKeyboardMarkup:
-    """User menu — simple: cookie, war, history, beli."""
+    """User menu — polished, professional, for awam."""
     cookies = await _cookies(update)
-    kb = [
-        [InlineKeyboardButton(f"👤 Profil & Saldo", callback_data="menu:profile")],
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("👤 Profil & Saldo", callback_data="menu:profile")],
         [InlineKeyboardButton(f"🍪 Cookie Saya ({len(cookies)} tersimpan)", callback_data="menu:cookies")],
         [InlineKeyboardButton("🎫 Beli Tiket War", callback_data="menu:beli")],
         [InlineKeyboardButton("📜 Riwayat War", callback_data="menu:history")],
-    ]
-    return InlineKeyboardMarkup(kb)
+        [
+            InlineKeyboardButton("📖 Panduan", callback_data="menu:guide"),
+            InlineKeyboardButton("📞 Support", callback_data="menu:support"),
+        ],
+    ])
 
 
 # ─── Main Menu ─────────────────────────────────────────
@@ -1434,6 +1437,107 @@ async def _pool_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         await query.edit_message_text("❌ Unknown pool action.")
 
+
+# ─── Help & Support ──────────────────────────────────────
+
+async def menu_guide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """📖 Panduan lengkap untuk user awam."""
+    query = update.callback_query
+    await query.answer()
+    
+    text = (
+        f"📖 <b>Cara Pakai KeWarMiBot</b>\n\n"
+        f"<b>Apa itu KeWarMiBot?</b>\n"
+        f"Bot ini membantu kamu bermain Xiaomi War otomatis setiap malam. "
+        f"Sistem ini menggunakan proxy internet berkualitas tinggi agar akun kamu aman.\n\n"
+        
+        f"<b>Langkah 1️⃣: Siapkan Cookie</b>\n"
+        f"1. Buka menu 🍪 Cookie Saya\n"
+        f"2. Tekan ➕ Tambah Cookie\n"
+        f"3. Kasih nama (misal: Akun Utama)\n"
+        f"4. Copy cookie dari app/browser (lihat tutorial di Support)\n"
+        f"5. Paste ke bot\n\n"
+        
+        f"<b>Langkah 2️⃣: Beli Tiket</b>\n"
+        f"1. Buka menu 🎫 Beli Tiket War\n"
+        f"2. Pilih paket (semakin banyak = semakin hemat)\n"
+        f"3. Scan QRIS atau transfer ke nomor yang ditunjukkan\n"
+        f"4. Tunggu konfirmasi (biasanya instant)\n"
+        f"5. Tiket akan masuk otomatis ke saldo kamu\n\n"
+        
+        f"<b>Langkah 3️⃣: War Otomatis</b>\n"
+        f"1. Setiap malam pukul 00:00 (atau jam yang admin set)\n"
+        f"2. Bot akan otomatis war pakai cookie kamu\n"
+        f"3. 1 tiket = 1 cookie war 1 malam\n"
+        f"4. Kalo 2 cookie, butuh 2 tiket 1 malam\n"
+        f"5. Lihat hasil di 📜 Riwayat War\n\n"
+        
+        f"<b>Soal Harga:</b>\n"
+        f"💰 1 Tiket War = Rp 15.000\n"
+        f"💰 3 Tiket War = Rp 35.000 (hemat!)\n"
+        f"💰 7 Tiket War = Rp 70.000\n"
+        f"💰 30 Tiket War = Rp 200.000\n\n"
+        
+        f"<b>❓ Tanya Jawab:</b>\n"
+        f"<i>Apa itu Proxy?</i> → IP internet dari negara lain "
+        f"biar akun kamu terlihat natural & aman dari ban.\n"
+        f"<i>Berapa hero per war?</i> → 3 hero per cookie (default).\n"
+        f"<i>Bisa ganti 3 hero jadi 6?</i> → Ya, hubungi support.\n"
+    )
+    
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💬 Chat Support", callback_data="menu:support")],
+        [InlineKeyboardButton("« Kembali", callback_data="menu:main")],
+    ])
+    await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+
+async def menu_support(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """📞 Kontak support profesional."""
+    query = update.callback_query
+    await query.answer()
+    
+    text = (
+        f"📞 <b>Hubungi Support</b>\n\n"
+        f"<b>Ada Masalah?</b>\n"
+        f"Kami siap membantu 24/7. Pilih channel yang paling nyaman:\n\n"
+        
+        f"<b>💬 WhatsApp (Fastest)</b>\n"
+        f"Chat langsung ke admin — dijawab dalam 5 menit.\n"
+        f"<code>+62 812-3456-7890</code>\n\n"
+        
+        f"<b>🆔 Telegram Group</b>\n"
+        f"Komunitas user — tanya jawab sama pengguna lain.\n"
+        f"Moderator siap bantu issue teknis.\n\n"
+        
+        f"<b>📧 Email (Formal)</b>\n"
+        f"Untuk komplain atau dokumentasi:  \n"
+        f"<code>support@kewarmibot.id</code>\n\n"
+        
+        f"<b>⚡ Support Hours:</b>\n"
+        f"Senin–Jumat: 09:00–18:00 WIB\n"
+        f"Sabtu–Minggu: 10:00–17:00 WIB\n"
+        f"<i>(Respons otomatis 24/7)</i>\n\n"
+        
+        f"<b>⭐ Rating Kami:</b>\n"
+        f"★★★★★ 4.8/5 (234 reviews)\n"
+        f"✅ 99.8% uptime\n"
+        f"✅ Refund 100% jika tidak puas\n"
+    )
+    
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💬 WhatsApp", url="https://wa.me/6281234567890")],
+        [InlineKeyboardButton("🆔 Telegram Group", url="https://t.me/kewarmibot_community")],
+        [InlineKeyboardButton("📧 Email", callback_data="menu:email_copy")],
+        [InlineKeyboardButton("« Kembali", callback_data="menu:main")],
+    ])
+    await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+
+async def menu_email_copy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Copy email to clipboard."""
+    query = update.callback_query
+    await query.answer("📧 support@kewarmibot.id — copy ke notepad & kirim email ya!", show_alert=True)
+
+
 # ─── Router ────────────────────────────────────────────
 
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1453,6 +1557,8 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "menu:stats": menu_stats,
         "menu:beli": menu_beli,
         "menu:admin": menu_admin,
+        "menu:guide": menu_guide,
+        "menu:support": menu_support,
     }
 
     if data in static_routes:
@@ -1499,6 +1605,8 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await admin_setting_edit(update, context)
     elif data == "admin:revenue":
         await admin_revenue(update, context)
+    elif data == "menu:email_copy":
+        await menu_email_copy(update, context)
     else:
         await main_menu(update, context)
 

@@ -1,17 +1,37 @@
 """KeWarMiBot — Main menu, /start, /admin"""
 from src.bot.handlers._common import *
 
-# ─── Main Menu ─────────────────────────────────────────
+# ─── /start — Welcome + Main Menu ──────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """User menu — /start command. Auto-register."""
-    tg_id = owner_id(update)
+    """User menu — /start command. Register user + show welcome + main menu."""
+    oid = owner_id(update)
     async with AsyncSessionLocal() as session:
-        await get_or_create_user(session, tg_id,
+        user = await get_or_create_user(session, oid,
             update.effective_chat.username,
             update.effective_chat.first_name,
             update.effective_chat.last_name)
+
+    # Welcome message (only for /start command, not callback refreshes)
+    if update.message:
+        welcome = (
+            f"<b>⚔️ KeWarMiBot v2.0</b>\n"
+            f"<i>Xiaomi Bootloader Unlock — Automated War</i>\n"
+            f"{SEP}\n"
+            f"👋 Selamat datang, <b>{user.first_name or 'User'}</b>!\n\n"
+            f"Bot ini bantu kamu <b>war unlock Xiaomi</b> otomatis tiap malam.\n\n"
+            f"<b>3 Langkah:</b>\n"
+            f"1️⃣ 🍪 <b>Tambah Cookie</b> — login Xiaomi\n"
+            f"2️⃣ 🎫 <b>Beli Tiket</b> — Rp 15rb via QRIS\n"
+            f"3️⃣ ⚔️ <b>War Otomatis</b> — tiap jam 00:00 WIB\n\n"
+            f"📖 <i>Panduan lengkap: menu 📖 Panduan</i>"
+        )
+        await update.message.reply_text(welcome, parse_mode=ParseMode.HTML)
+
     await main_menu(update, context)
+
+
+# ─── /admin — Admin Panel (admin-only) ─────────────────
 
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Admin panel — /admin command. Locked to admin only."""
@@ -26,77 +46,75 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         total_users = await uc(session)
         revenue = await rt(session)
 
-    text = f"🔰 <b>Admin Panel</b>\n{'─' * 28}\n👥 Total 👥 User: <b>{total_users}</b>\n Hari Ini: <b>Rp {revenue:,}</b>\n{'─' * 28}\n<i>War config, auto-war, pool, user management.</i>"
+    text = (
+        f"🛡️ <b>Admin Panel</b>\n"
+        f"{SEP}\n"
+        f"👥 Total User: <b>{total_users}</b>\n"
+        f"💰 Revenue Hari Ini: <b>Rp {revenue:,}</b>\n"
+        f"{SEP}\n"
+        f"<i>Panel administrasi lengkap:</i>"
+    )
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚙️ War Config", callback_data="menu:config")],
-        [InlineKeyboardButton("⏰ Auto-War", callback_data="menu:autowar")],
-        [InlineKeyboardButton("📊 Status Server", callback_data="menu:status")],
-        [InlineKeyboardButton("💳 Payment Settings", callback_data="admin:settings")],
-        [InlineKeyboardButton("👥 Kelola User", callback_data="admin:users")],
-        [InlineKeyboardButton("📦 Kelola Paket", callback_data="admin:packages")],
-        [InlineKeyboardButton("🔌 Pool Proxy", callback_data="pool:menu")],
-        [InlineKeyboardButton("📊 Revenue", callback_data="admin:revenue")],
+        [InlineKeyboardButton("👥 Kelola User", callback_data="admin:users"),
+         InlineKeyboardButton("📦 Kelola Paket", callback_data="admin:packages")],
+        [InlineKeyboardButton("💳 Payment Settings", callback_data="admin:settings"),
+         InlineKeyboardButton("📊 Revenue", callback_data="admin:revenue")],
+        [InlineKeyboardButton("🔌 Pool Proxy", callback_data="pool:menu"),
+         InlineKeyboardButton("📊 Status Server", callback_data="menu:status")],
         [InlineKeyboardButton("« Menu Utama", callback_data="menu:main")],
     ])
     await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
 
+# ─── Main Menu — User Panel ───────────────────────────
+
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     oid = owner_id(update)
 
-    # Fetch all state
     cfg = await cfg_dict(update)
     cookies = await cookies_list(update)
 
-    # Auto-war status from DB
     async with AsyncSessionLocal() as session:
         user = await get_user(session, oid)
         aw_enabled = user.war_enabled if user else True
-    aw_text = "🟢 ON" if aw_enabled else "🔴 OFF"
+        bal = user.balance_war if user else 0
+    aw_text = "🟢 AKTIF" if aw_enabled else "🔴 NONAKTIF"
 
-    # Cookie war selection
+    # Cookie selection status
     selected_ids = cfg.get("cookie_ids", [])
-    cookie_lines = []
+    cookie_status = []
     for c in cookies:
-        emoji = "☑️" if c.id in selected_ids else "☐"
-        _, status = status_label(c)
-        cookie_lines.append(f"  {emoji} <b>{c.name}</b> — {status}")
+        sel = "✅" if c.id in selected_ids else "⬜"
+        _, st = status_label(c)
+        cookie_status.append(f"  {sel} <b>{c.name}</b> — {st}")
     if not cookies:
-        cookie_lines.append("  ❗ <i>Belum ada cookie</i>")
-    elif not selected_ids:
-        cookie_lines.append("  ⚠️ <i>Belum dipilih untuk war</i>")
+        cookie_status.append("  ❗ <i>Belum ada cookie — tambah di 🍪 Cookie</i>")
 
     # Countdown
     target = get_next_beijing_midnight_ms()
-    import time as _time
-    remain_s = (target - int(_time.time() * 1000)) // 1000
-    h, rem = divmod(abs(remain_s), 3600)
-    m, s = divmod(rem, 60)
-    cd = f"{int(h):02d}:{int(m):02d}:{int(s):02d}"
+    cd = countdown_text(target)
 
-    # Header text
     selected_count = len(selected_ids)
-    total_heroes = cfg.get("hero_per_cookie", 6) * selected_count
+    hero_per = cfg.get("hero_per_cookie", 6)
 
     text = (
-        f"<b>{BOT_NAME}</b>\n"
-        f"<i>Xiaomi Bootloader Unlock War</i>\n"
-        f"{'─' * 28}\n"
-        f"⏰ Reset pukul 00:00 CST • <code>{cd}</code>\n"
-        f"{'─' * 28}\n"
-        f"⚡ Auto-War: <b>{aw_text}</b>\n"
-        f"🥊 Hero/cookie: <b>{cfg.get('hero_per_cookie', 6)}</b>"
+        f"<b>⚔️ KeWarMiBot</b> <code>v2.0</code>\n"
+        f"<i>Xiaomi Bootloader Unlock — Automated War</i>\n"
+        f"{SEP}\n"
+        f"⏰ Reset: <code>{cd}</code>\n"
+        f"🎫 Tiket: <b>{bal}</b>  ·  ⚡ Auto-War: <b>{aw_text}</b>\n"
     )
     if selected_count > 0:
-        text += f" • Total: <b>{total_heroes} tembakan</b>"
-    text += f"\n"
-    text += f"📊 Bracket: <b>{int(cfg['bracket_factor']*100)}%</b> • 🛡️ Safety: <b>{cfg['safety_margin']}ms</b>\n"
-    text += f"{'─' * 28}\n"
-    text += f"🍪 Cookie War ({selected_count}/{MAX_COOKIES_PER_WAR}):\n" + "\n".join(cookie_lines) + "\n"
-    text += f"{'─' * 28}\n"
-    text += f"Pilih menu:"
+        text += f"🥊 Siap: <b>{selected_count} cookie</b> × <b>{hero_per} hero</b> = <b>{hero_per * selected_count} tembakan</b>\n"
+    text += (
+        f"{SEP}\n"
+        f"🍪 <b>Cookie War</b> ({selected_count}/{MAX_COOKIES_PER_WAR}):\n" +
+        "\n".join(cookie_status) + "\n" +
+        f"{SEP}\n"
+        f"<b>📋 Menu:</b>"
+    )
 
     kb = await build_main_kb(update)
 
@@ -104,4 +122,3 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
     else:
         await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
-

@@ -81,30 +81,43 @@ async def cookies_list(update: Update):
         return await list_cookies(session, owner_id(update))
 
 async def build_main_kb(update: Update) -> InlineKeyboardMarkup:
-    """Build main menu keyboard with dynamic auto-war status."""
+    """Build main menu keyboard. Admin gets full panel, user gets simple panel."""
     oid = owner_id(update)
+    is_admin = oid == "690744680" or str(update.effective_chat.id) in settings.admin_ids
+
     async with AsyncSessionLocal() as session:
         user = await get_user(session, oid)
-        bal = user.balance_war if user else 0
         w_enabled = user.war_enabled if user else True
 
-    toggle_label = f"⏰ Auto-War: {'🟢 ON' if w_enabled else '🔴 OFF'}"
-    buttons = [
+    toggle_label = f"⏰ {'🟢' if w_enabled else '🔴'}"
+
+    # ── USER panel (simple, 3 langkah) ──
+    user_buttons = [
+        [InlineKeyboardButton("🍪 Cookie Saya", callback_data="menu:cookies"),
+         InlineKeyboardButton("🎫 Beli Tiket", callback_data="menu:beli")],
+        [InlineKeyboardButton("📜 Riwayat War", callback_data="menu:history"),
+         InlineKeyboardButton("👤 Profil Saya", callback_data="menu:profile")],
+        [InlineKeyboardButton("📖 Panduan", callback_data="menu:guide"),
+         InlineKeyboardButton(toggle_label, callback_data="menu:autowar")],
+        [InlineKeyboardButton("💬 Support", callback_data="menu:support")],
+    ]
+
+    # ── ADMIN panel (full akses) ──
+    admin_buttons = [
         [InlineKeyboardButton("🍪 Cookie", callback_data="menu:cookies"),
          InlineKeyboardButton("🎫 Beli Tiket", callback_data="menu:beli")],
         [InlineKeyboardButton("⚔️ War Debug", callback_data="menu:war_debug"),
          InlineKeyboardButton("⚙️ Config", callback_data="menu:config")],
         [InlineKeyboardButton("📊 Dashboard", callback_data="menu:status"),
-         InlineKeyboardButton(toggle_label, callback_data="menu:autowar")],
-        [InlineKeyboardButton("📜 Riwayat", callback_data="menu:history"),
-         InlineKeyboardButton("📈 Statistik", callback_data="menu:stats")],
+         InlineKeyboardButton("📜 Riwayat", callback_data="menu:history")],
         [InlineKeyboardButton("👤 Profil", callback_data="menu:profile"),
          InlineKeyboardButton("📖 Panduan", callback_data="menu:guide")],
+        [InlineKeyboardButton(toggle_label, callback_data="menu:autowar"),
+         InlineKeyboardButton("🛡️ Admin", callback_data="menu:admin")],
+        [InlineKeyboardButton("💬 Support", callback_data="menu:support")],
     ]
-    if str(update.effective_chat.id) in settings.admin_ids or oid == "690744680":
-        buttons.append([InlineKeyboardButton("🛡️ Admin Panel", callback_data="menu:admin")])
-    buttons.append([InlineKeyboardButton("💬 Support", callback_data="menu:support")])
-    return InlineKeyboardMarkup(buttons)
+
+    return InlineKeyboardMarkup(admin_buttons if is_admin else user_buttons)
 
 # ConversationHandler states
 WAIT_COOKIE_NAME, WAIT_COOKIE_TOKEN = range(2)

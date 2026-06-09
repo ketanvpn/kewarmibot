@@ -52,7 +52,8 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     async with AsyncSessionLocal() as session:
         from src.user_service import user_count as uc
         from src.package_service import revenue_today as rt
-        from src.db import select, func, OrderModel
+        from sqlalchemy import select, func
+        from src.db import OrderModel
         total_users = await uc(session)
         revenue = await rt(session)
         # Order stats

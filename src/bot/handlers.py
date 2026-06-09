@@ -1448,8 +1448,9 @@ async def menu_guide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     text = (
         f"📖 <b>Cara Pakai KeWarMiBot</b>\n\n"
         f"<b>Apa itu KeWarMiBot?</b>\n"
-        f"Bot ini membantu kamu bermain Xiaomi War otomatis setiap malam. "
-        f"Sistem ini menggunakan proxy internet berkualitas tinggi agar akun kamu aman.\n\n"
+        f"Bot ini membantu kamu ikut Xiaomi War otomatis setiap malam. "
+        f"Kamu cukup siapkan akun, beli tiket, dan sistem akan menjalankan war untukmu "
+        f"tepat di jam yang sudah ditentukan. Aman, mudah, tanpa ribet.\n\n"
         
         f"<b>Langkah 1️⃣: Siapkan Cookie</b>\n"
         f"1. Buka menu 🍪 Cookie Saya\n"
@@ -1479,10 +1480,11 @@ async def menu_guide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"💰 30 Tiket War = Rp 200.000\n\n"
         
         f"<b>❓ Tanya Jawab:</b>\n"
-        f"<i>Apa itu Proxy?</i> → IP internet dari negara lain "
-        f"biar akun kamu terlihat natural & aman dari ban.\n"
-        f"<i>Berapa hero per war?</i> → 3 hero per cookie (default).\n"
-        f"<i>Bisa ganti 3 hero jadi 6?</i> → Ya, hubungi support.\n"
+        f"<i>Apakah akun saya aman?</i> → Ya. Cookie kamu dienkripsi "
+        f"dan hanya dipakai saat war otomatis. Tidak disimpan polos.\n"
+        f"<i>Berapa kali war dalam 1 tiket?</i> → 1 tiket = 1 cookie = 1 malam war.\n"
+        f"<i>Bisa refund?</i> → Bisa. 100% uang kembali jika tidak puas.\n"
+        f"<i>Kapan war dijalankan?</i> → Otomatis setiap malam pukul 00:00 WIB.\n"
     )
     
     kb = InlineKeyboardMarkup([

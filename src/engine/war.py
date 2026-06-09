@@ -241,18 +241,31 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
     else:
         target_ms = get_target_ms(config.war_hour, config.war_minute, config.war_tz)
 
+    # Compensate latency: fire this many ms BEFORE to arrive AT target
     base_send = target_ms - latency_median
     bracket_half = int(latency_median * config.bracket_factor) + config.safety_margin
 
-    # 3. Distribute offsets across ALL heroes (bracket + safety, no cancellation)
+    # 3. Distribute offsets across ALL heroes
+    #    Center the bracket symmetrically around target_ms → half before, half after.
+    #    hero_spacing_ms overrides automatic spacing when set (min 5ms enforced).
     offsets = []
-    # safety_margin ADDS to spread (not cancelled). Total window = 2*(bracket_half)
     if total_heroes > 1:
-        for i in range(total_heroes):
-            offset = int(-bracket_half + (2 * bracket_half * i) / (total_heroes - 1))
-            offsets.append(offset)
+        if config.hero_spacing_ms >= 1:
+            # Explicit spacing mode: center around target_ms, fixed interval
+            spacing = max(config.hero_spacing_ms, 5)
+            span = spacing * (total_heroes - 1)
+            start = target_ms - span // 2
+            for i in range(total_heroes):
+                offsets.append((start + spacing * i) - base_send)
+            logger.info(f"Spacing: {spacing}ms × {total_heroes} heroes → window {span}ms (±{span//2}ms around target)")
+        else:
+            # Auto spacing: symmetric around target_ms, window = 2*bracket_half
+            center_offset = latency_median  # shift from old base_send to target_ms
+            for i in range(total_heroes):
+                rel = int(-bracket_half + (2 * bracket_half * i) / (total_heroes - 1))
+                offsets.append(center_offset + rel)
     else:
-        offsets = [0]
+        offsets = [latency_median]
 
     # 4. NTP sync
     ntp_offset = get_ntp_offset()

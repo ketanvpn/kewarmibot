@@ -179,13 +179,13 @@ def start_scheduler(get_notifier: Callable | None = None):
                 # 5 min warning
                 if diff == 5 and not _warned_today.get(uid_str):
                     _warned_today[uid_str] = True
-                    await _war_warning_for_user(uid_str, notify=_notifier)
+                    asyncio.create_task(_war_warning_for_user(uid_str, notify=_notifier))
 
                 # 3 min trigger → execute war
                 if 0 < diff <= 3 and not _war_triggered_today.get(uid_str):
                     _war_triggered_today[uid_str] = True
                     logger.info(f"Auto-war trigger for {user.first_name or uid_str} ({diff}min to target)")
-                    await _run_war_for_user(uid_str, notify=_notifier)
+                    asyncio.create_task(_run_war_for_user(uid_str, notify=_notifier))
 
             except Exception as e:
                 logger.error(f"Dynamic war checker error for {uid_str}: {e}")

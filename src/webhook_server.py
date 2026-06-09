@@ -75,15 +75,9 @@ async def webhook_payment(request: Request):
 
                 # Notify user
                 if _bot_notifier:
-                    text = (
-                        f"✅ <b>Pembayaran Sukses!</b>\n"
-                        f"━━━━━━━━━━━━━━━━━━\n"
-                        f"📦 {order.package_id} war\n"
-                        f"💰 Rp {amount:,}\n"
-                        f"━━━━━━━━━━━━━━━━━━\n"
-                        f"💳 Saldo baru: <b>{order.war_count}</b>\n"
-                        f"<i>Siap mulai war!</i>"
-                    )
+                    from src.bot.notify import format_payment_success
+                    pkg_name = f"Order #{order.order_ref}"
+                    text = format_payment_success(pkg_name, amount, order.war_count, order.war_count)
                     try:
                         await _bot_notifier(str(order.user_id), text)
                     except Exception as e:

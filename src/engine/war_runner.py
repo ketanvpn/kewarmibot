@@ -161,11 +161,8 @@ async def execute_war(
 
     # Notify
     if notify:
-        summary = (
-            f"{report.format_report()}\n"
-            f"{'─' * 28}\n"
-            f"🎫 Tiket tersisa: <b>{final_bal}</b>"
-        )
-        await notify(user_tg_id, summary)
+        from src.bot.notify import format_war_notification
+        msg = format_war_notification(report, final_bal)
+        await notify(user_tg_id, msg)
 
     return report

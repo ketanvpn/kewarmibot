@@ -1,7 +1,7 @@
 """Database models — SQLAlchemy async."""
 
 import datetime
-from sqlalchemy import Boolean, Integer, String, Text, Float, Boolean, DateTime, JSON, ForeignKey
+from sqlalchemy import Boolean, Integer, String, Text, Float, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import select

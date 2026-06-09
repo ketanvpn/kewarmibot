@@ -32,11 +32,7 @@ from src.cookie_service import (
 from src.war_config_service import load_config, save_config, MAX_COOKIES_PER_WAR, recommended_hero
 from src.engine.api import measure_latency
 from src.engine.war import run_war_sync, WarConfig, WarResultReport, get_next_beijing_midnight_ms
-from src.user_service import get_or_create_user, get_user, add_balance, deduct_balance, add_tickets, get_user_by_id
-from src.package_service import list_packages, get_package, create_order, list_user_orders, set_payment_url, update_package, revenue_today
-from src.settings_service import get_setting, set_setting, get_payment_config
-from src.proxy_pool_service import pool_stats, pool_add, pool_allocate, pool_consume_batch, pool_clear_all, pool_get_all
-from src.user_service import get_or_create_user, get_user, add_balance, deduct_balance, add_tickets, get_user_by_id
+from src.user_service import get_or_create_user, get_user, add_balance, deduct_balance, add_tickets, get_user_by_id, toggle_war_enabled
 from src.package_service import list_packages, get_package, create_order, list_user_orders, set_payment_url, update_package, revenue_today
 from src.settings_service import get_setting, set_setting, get_payment_config
 from src.proxy_pool_service import pool_stats, pool_add, pool_allocate, pool_consume_batch, pool_clear_all, pool_get_all
@@ -151,8 +147,10 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cfg = await _cfg_dict(update)
     cookies = await _cookies(update)
 
-    # Auto-war status
-    aw_enabled = _auto_war_enabled.get(oid, True)
+    # Auto-war status from DB
+    async with AsyncSessionLocal() as session:
+        user = await get_user(session, oid)
+        aw_enabled = user.war_enabled if user else True
     aw_text = "🟢 ON" if aw_enabled else "🔴 OFF"
 
     # Cookie war selection
@@ -768,14 +766,13 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ─── Auto-War Toggle ───────────────────────────────────
 
-_auto_war_enabled: dict[str, bool] = {}
-
-
 async def menu_autowar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     oid = _owner(update)
-    enabled = _auto_war_enabled.get(oid, True)
+    async with AsyncSessionLocal() as session:
+        user = await get_user(session, oid)
+        enabled = user.war_enabled if user else True
 
     status_text = "✅ AKTIF" if enabled else "❌ NONAKTIF"
     text = (
@@ -798,7 +795,8 @@ async def autowar_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     query = update.callback_query
     await query.answer()
     oid = _owner(update)
-    _auto_war_enabled[oid] = not _auto_war_enabled.get(oid, True)
+    async with AsyncSessionLocal() as session:
+        new_state = await toggle_war_enabled(session, oid)
     await menu_autowar(update, context)
 
 
@@ -837,7 +835,9 @@ async def autowar_run_now(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     async with AsyncSessionLocal() as session:
         from src.db import WarHistoryModel
+        user = await get_user(session, oid)
         history = WarHistoryModel(
+            user_id=user.id if user else None,
             started_at=report.started_at,
             results=json.dumps([{"hero_id": r.hero_id, "success": r.success, "code": r.code, "msg": r.msg, "drift_ms": r.drift_ms, "cookie_name": r.cookie_name} for r in report.hero_results]),
             success_count=report.success_count,
@@ -1412,7 +1412,7 @@ async def pool_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         async with AsyncSessionLocal() as session:
             result = await pool_add(session, oid, lines)
         await update.message.reply_text(
-            f"✅ <b>{result['added']}</b> proxy ditambahkan!\n❌ {result['duplicates']} duplikat.",
+            f"✅ <b>{result['added']}</b> proxy ditambahkan!\n❌ {result['skipped']} duplikat.",
             parse_mode=ParseMode.HTML
         )
 

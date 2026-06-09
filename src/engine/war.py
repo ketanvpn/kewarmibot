@@ -76,6 +76,9 @@ class WarConfig:
     hero_per_cookie: int = 6
     bracket_factor: float = 0.8
     safety_margin: int = 30
+    hero_spacing_ms: int = 0
+    use_pool: bool = False
+    owner_chat_id: str = ""
     debug: bool = False
     war_hour: int = 0       # target hour (0-23)
     war_minute: int = 0     # target minute (0-59)

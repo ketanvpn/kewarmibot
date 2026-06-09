@@ -73,7 +73,7 @@ async def _build_main_kb(update: Update) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(f"👤 Profil & Saldo", callback_data="menu:profile")],
         [InlineKeyboardButton(f"🍪 Cookie Saya ({len(cookies)} tersimpan)", callback_data="menu:cookies")],
-        [InlineKeyboardButton("🛒 Beli Slot War", callback_data="menu:beli")],
+        [InlineKeyboardButton("🎫 Beli Tiket War", callback_data="menu:beli")],
         [InlineKeyboardButton("📜 Riwayat War", callback_data="menu:history")],
     ]
     return InlineKeyboardMarkup(kb)
@@ -104,7 +104,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         total_users = await uc(session)
         revenue = await rt(session)
 
-    text = f"🔰 <b>Admin Panel</b>\n{'─' * 28}\n👥 Total User: <b>{total_users}</b>\n💰 Revenue Hari Ini: <b>Rp {revenue:,}</b>\n{'─' * 28}\n<i>War config, auto-war, pool, user management.</i>"
+    text = f"🔰 <b>Admin Panel</b>\n{'─' * 28}\n👥 Total 👥 User: <b>{total_users}</b>\n Hari Ini: <b>Rp {revenue:,}</b>\n{'─' * 28}\n<i>War config, auto-war, pool, user management.</i>"
 
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("⚙️ War Config", callback_data="menu:config")],
@@ -662,7 +662,7 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if balance < total_req:
         await query.edit_message_text(
-            f"❌ Saldo tidak cukup!\n\n💰 Saldo: {balance} war\n🎯 Butuh: {total_req} war\n\n<i>Beli slot war dulu di 🛒 Beli Slot War</i>",
+            f"❌ Saldo tidak cukup!\n\n💰 Saldo: {balance} war\n🎯 Butuh: {total_req} war\n\n<i>Beli tiket dulu di 🎫 Beli Tiket War</i>",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Beli Slot", callback_data="menu:beli")]])
         )
@@ -970,7 +970,7 @@ async def menu_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             text += f"  {s} {o.created_at.strftime('%d/%m') if o.created_at else '?'} — +{o.war_count} war (Rp {o.amount_idr:,})\n"
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 Beli Slot War", callback_data="menu:beli")],
+        [InlineKeyboardButton("🎫 Beli Tiket War", callback_data="menu:beli")],
         [InlineKeyboardButton("« Kembali", callback_data="menu:main")],
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
@@ -987,7 +987,7 @@ async def menu_beli(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             update.effective_chat.username, update.effective_chat.first_name)
         pkgs = await list_packages(session)
 
-    text = f"🛒 <b>Beli Slot War</b>\n{'─' * 28}\n💰 Saldo: <b>{user.balance_war}</b> war\n\nPilih paket:"
+    text = f"🛒 <b>Beli Slot War</b>\n{'─' * 28}\n🎫 Tiket: <b>{user.balance_war}</b>\n\n1 tiket = 1x auto-war\n\nPilih paket:"
 
     kb = []
     for p in pkgs:
@@ -1035,13 +1035,13 @@ async def menu_beli_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         payment_url = None
 
     if payment_url:
-        text = f"🛒 <b>Pembayaran QRIS</b>\n{'─' * 28}\n📦 {pkg.name}\n💰 <b>Rp {pkg.price_idr:,}</b>\n⏱️ <i>15 menit</i>\n{'─' * 28}\n📱 <b>Buka link bayar:</b>"
+        text = f"🎫 <b>Pembayaran Tiket War</b>\n{'─' * 28}\n📦 {pkg.name}\n💰 <b>Rp {pkg.price_idr:,}</b>\n⏱️ <i>15 menit</i>\n{'─' * 28}\n📱 <b>Buka link bayar:</b>"
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Buka QRIS", url=payment_url)],
             [InlineKeyboardButton("« Kembali", callback_data="menu:beli")],
         ])
     else:
-        text = f"🛒 <b>Pembayaran Manual</b>\n{'─' * 28}\n📦 {pkg.name}\n💰 <b>Rp {pkg.price_idr:,}</b>\n📋 <code>{order.order_ref}</code>\n{'─' * 28}\n⚠️ <i>Gateway offline. Hubungi admin.</i>"
+        text = f"🎫 <b>Pembayaran Tiket War</b>\n{'─' * 28}\n📦 {pkg.name}\n💰 <b>Rp {pkg.price_idr:,}</b>\n📋 <code>{order.order_ref}</code>\n{'─' * 28}\n⚠️ <i>Gateway offline. Hubungi admin.</i>"
         kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:beli")]])
 
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
@@ -1063,7 +1063,7 @@ async def menu_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         total_users = await uc(session)
         revenue = await rt(session)
 
-    text = f"🔰 <b>Admin Panel</b>\n{'─' * 28}\n👥 User: <b>{total_users}</b>\n💰 Revenue Hari Ini: <b>Rp {revenue:,}</b>"
+    text = f"🔰 <b>Admin Panel</b>\n{'─' * 28}\n👥 👥 User: <b>{total_users}</b>\n Hari Ini: <b>Rp {revenue:,}</b>"
 
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("⚙️ War Config", callback_data="menu:config")],
@@ -1102,7 +1102,7 @@ async def admin_users_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     for u in users:
         s = "⛔" if u.is_suspended else "✅"
         kb_rows.append([InlineKeyboardButton(
-            f"{s} {u.first_name or u.username or u.telegram_id} (💰{u.balance_war})",
+            f"{s} {u.first_name or u.username or u.telegram_id} (🎫{u.balance_war})",
             callback_data=f"admin:user:{u.id}"
         )])
     kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:admin")])
@@ -1126,7 +1126,7 @@ async def admin_user_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     st = "⛔ SUSPENDED" if user.is_suspended else "✅ Aktif"
-    text = f"👤 <b>{user.first_name or user.username or user.telegram_id}</b>\n{'─' * 28}\n🆔 <code>{user.telegram_id}</code>\n📛 {st}\n💰 Saldo: <b>{user.balance_war}</b> war\n⚔️ Total War: <b>{user.total_wars}</b>\n🎫 Tiket: <b>{user.total_tickets}</b>"
+    text = f"👤 <b>{user.first_name or user.username or user.telegram_id}</b>\n{'─' * 28}\n🆔 <code>{user.telegram_id}</code>\n📛 {st}\n🎫 Tiket: <b>{user.balance_war}</b>\n⚔️ Total War: <b>{user.total_wars}</b>\n🎫 Tiket: <b>{user.total_tickets}</b>"
 
     if orders:
         text += f"\n\n<b>Order Terakhir:</b>"
@@ -1159,7 +1159,7 @@ async def admin_user_topup_prompt(update: Update, context: ContextTypes.DEFAULT_
         else:
             amount = int(action)
             new_balance = await add_balance(session, uid, amount)
-            await query.answer(f"✅ +{amount} war → saldo {new_balance}", show_alert=True)
+            await query.answer(f"✅ +{amount} tiket → saldo {new_balance}", show_alert=True)
 
     query.data = f"admin:user:{uid}"
     await admin_user_detail(update, context)
@@ -1172,29 +1172,125 @@ async def admin_packages_list(update: Update, context: ContextTypes.DEFAULT_TYPE
     async with AsyncSessionLocal() as session:
         pkgs = await list_packages(session, active_only=False)
 
-    lines = ["📦 <b>Klik untuk toggle</b>"]
+    lines = ["📦 <b>Kelola Paket Tiket War</b>"]
     kb_rows = []
     for p in pkgs:
         s = "🟢" if p.is_active else "🔴"
-        kb_rows.append([InlineKeyboardButton(f"{s} {p.name} — Rp {p.price_idr:,}", callback_data=f"admin:pkg:{p.id}")])
+        lines.append(f"{s} <b>{p.name}</b> — {p.war_count} tiket @ Rp {p.price_idr:,}")
+        kb_rows.append([InlineKeyboardButton(
+            f"✏️ {p.name}",
+            callback_data=f"admin:pkg:edit:{p.id}"
+        )])
     kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:admin")])
 
-    text = "\n".join(lines) + "\n\n<i>Klik paket untuk toggle aktif/nonaktif.</i>"
+    text = "\n".join(lines) + "\n\n<i>Klik ✏️ untuk edit nama, tiket, harga.</i>"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode=ParseMode.HTML)
 
 async def admin_pkg_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show detail edit form: nama, harga, tiket, toggle."""
     query = update.callback_query
     await query.answer()
-    pkg_id = int(query.data.split(":")[-1])
+    parts = query.data.split(":")
+    pkg_id = int(parts[-1])
 
     async with AsyncSessionLocal() as session:
-        from src.package_service import get_package, update_package
         pkg = await get_package(session, pkg_id)
-        if pkg:
-            await update_package(session, pkg_id, is_active=not pkg.is_active)
-            await query.answer(f"Paket {'diaktifkan' if not pkg.is_active else 'dinonaktifkan'}!", show_alert=True)
 
-    await admin_packages_list(update, context)
+    if not pkg:
+        await query.edit_message_text("❌ Paket tidak ditemukan.")
+        return
+
+    s = "🟢 AKTIF" if pkg.is_active else "🔴 NONAKTIF"
+    text = (
+        f"✏️ <b>Edit Paket</b>\n"
+        f"{'─' * 28}\n"
+        f"📛 Nama: <b>{pkg.name}</b>\n"
+        f"🎫 Tiket: <b>{pkg.war_count}</b> (1 tiket = 1x war)\n"
+        f"💰 Harga: <b>Rp {pkg.price_idr:,}</b>\n"
+        f"📊 Status: <b>{s}</b>\n"
+        f"{'─' * 28}\n"
+        f"<i>Klik tombol di bawah untuk edit.</i>"
+    )
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📛 Edit Nama", callback_data=f"admin:pkg:name:{pkg_id}")],
+        [InlineKeyboardButton("🎫 Edit Tiket", callback_data=f"admin:pkg:war:{pkg_id}")],
+        [InlineKeyboardButton("💰 Edit Harga", callback_data=f"admin:pkg:price:{pkg_id}")],
+        [
+            InlineKeyboardButton(
+                "🔴 Nonaktifkan" if pkg.is_active else "🟢 Aktifkan",
+                callback_data=f"admin:pkg:toggle:{pkg_id}"
+            )
+        ],
+        [InlineKeyboardButton("« Kembali", callback_data="admin:packages")],
+    ])
+    await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+
+async def admin_pkg_edit_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Prompt user to enter new value for a package field."""
+    query = update.callback_query
+    await query.answer()
+    parts = query.data.split(":")
+    field = parts[2]  # name, war, price, toggle
+    pkg_id = int(parts[3])
+
+    if field == "toggle":
+        async with AsyncSessionLocal() as session:
+            pkg = await get_package(session, pkg_id)
+            if pkg:
+                await update_package(session, pkg_id, is_active=not pkg.is_active)
+                await query.answer(f"Paket {'dinonaktifkan' if pkg.is_active else 'diaktifkan'}!", show_alert=True)
+        query.data = f"admin:pkg:edit:{pkg_id}"
+        await admin_pkg_edit(update, context)
+        return
+
+    # Store pending edit in user_data
+    context.user_data["editing_pkg"] = {"id": pkg_id, "field": field}
+    labels = {"name": "Nama Paket", "war": "Jumlah Tiket (1 tiket = 1x war)", "price": "Harga (Rp)"}
+    label = labels.get(field, field)
+
+    await query.edit_message_text(
+        f"✏️ <b>Edit {label}</b>\n\n"
+        f"<i>Kirim value baru sekarang.</i>\n"
+        f"<code>/cancel</code> untuk batal.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("« Batal", callback_data=f"admin:pkg:edit:{pkg_id}")
+        ]])
+    )
+
+async def admin_pkg_edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Save edited package field value."""
+    pending = context.user_data.get("editing_pkg")
+    if not pending:
+        return
+
+    pkg_id = pending["id"]
+    field = pending["field"]
+    raw = update.message.text.strip()
+    context.user_data.pop("editing_pkg", None)
+
+    async with AsyncSessionLocal() as session:
+        pkg = await get_package(session, pkg_id)
+        if not pkg:
+            await update.message.reply_text("❌ Paket tidak ditemukan.", parse_mode=ParseMode.HTML)
+            return
+
+        try:
+            if field == "name":
+                pkg.name = raw
+            elif field == "war":
+                pkg.war_count = int(raw)
+            elif field == "price":
+                pkg.price_idr = int(raw)
+            await session.commit()
+            labels = {"name": "Nama", "war": "Tiket", "price": "Harga"}
+            await update.message.reply_text(
+                f"✅ <b>{labels[field]}</b> paket <b>{pkg.name}</b> diupdate!",
+                parse_mode=ParseMode.HTML
+            )
+        except ValueError:
+            await update.message.reply_text("❌ Format angka salah. Coba lagi.", parse_mode=ParseMode.HTML)
 
 # ─── Admin: Settings ─────────────────────────────────
 
@@ -1245,16 +1341,20 @@ async def admin_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         r = await session.execute(select(func.count(OrderModel.id)).where(OrderModel.status == "paid"))
         total_paid = r.scalar()
 
-    text = f"📊 <b>Revenue</b>\n{'─' * 28}\n👥 User: <b>{users}</b>\n📦 Order Sukses: <b>{total_paid}</b>\n{'─' * 28}\n📅 Hari Ini: <b>Rp {today:,}</b>\n💰 Total: <b>Rp {total:,}</b>"
+    text = f"📊 <b>Revenue</b>\n{'─' * 28}\n👥 👥 User: <b>{users}</b>\n📦 Order Sukses: <b>{total_paid}</b>\n{'─' * 28}\n📅 Hari Ini: <b>Rp {today:,}</b>\n💰 Total: <b>Rp {total:,}</b>"
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:admin")]])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
 # ─── Text Input Handler ─────────────────────────────
 
 async def text_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Unified text input: settings edit, package edit, or proxy add."""
     key = context.user_data.get("editing_setting")
+    pkg = context.user_data.get("editing_pkg")
     if key:
         await settings_edit_save(update, context)
+    elif pkg:
+        await admin_pkg_edit_save(update, context)
     else:
         await pool_handle_text(update, context)
 
@@ -1310,6 +1410,32 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await config_set(update, context)
     elif data.startswith("autowar:"):
         await autowar_toggle(update, context)
+    elif data.startswith("beli:pkg:"):
+        await menu_beli_confirm(update, context)
+    elif data.startswith("beli:"):
+        await menu_beli(update, context)
+    elif data.startswith("pool:"):
+        await pool_handle_text(update, context)
+    elif data.startswith("admin:pkg:name:") or data.startswith("admin:pkg:war:") or data.startswith("admin:pkg:price:") or data.startswith("admin:pkg:toggle:"):
+        await admin_pkg_edit_field(update, context)
+    elif data.startswith("admin:pkg:edit:"):
+        await admin_pkg_edit(update, context)
+    elif data.startswith("admin:pkg:"):
+        await admin_pkg_edit(update, context)
+    elif data.startswith("admin:user:"):
+        await admin_user_detail(update, context)
+    elif data.startswith("admin:topup:"):
+        await admin_user_topup_prompt(update, context)
+    elif data == "admin:users":
+        await admin_users_list(update, context)
+    elif data == "admin:packages":
+        await admin_packages_list(update, context)
+    elif data == "admin:settings":
+        await admin_settings_menu(update, context)
+    elif data.startswith("admin:setting:"):
+        await admin_setting_edit(update, context)
+    elif data == "admin:revenue":
+        await admin_revenue(update, context)
     else:
         await main_menu(update, context)
 
@@ -1371,6 +1497,6 @@ def build_app() -> Application:
     )
     app.add_handler(conv)
 
-    app.add_handler(CallbackQueryHandler(menu_router, pattern="^(menu|cookie|cfg|autowar):"))
+    app.add_handler(CallbackQueryHandler(menu_router, pattern="^(menu|cookie|cfg|autowar|pool|beli|admin):"))
 
     return app

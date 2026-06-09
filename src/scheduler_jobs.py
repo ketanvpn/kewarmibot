@@ -93,10 +93,10 @@ async def _run_war_for_user(user_tg_id: str, notify: Callable | None = None) -> 
             if notify:
                 await notify(user_tg_id, (
                     f"⚠️ <b>Auto-War Dilewati</b>\n\n"
-                    f"Saldo tidak cukup untuk war auto.\n"
-                    f"💰 Saldo: <b>{user.balance_war}</b> war\n"
-                    f"🎯 Butuh: <b>{total_req}</b> war\n\n"
-                    f"<i>Beli slot war dulu di menu 🛒 Beli Slot War</i>"
+                    f"Tiket tidak cukup untuk war auto.\n"
+                    f"🎫 Tiket: <b>{user.balance_war}</b>\n"
+                    f"🎯 Butuh: <b>{total_req}</b> tiket\n\n"
+                    f"<i>Beli tiket dulu di menu 🎫 Beli Tiket War</i>"
                 ))
             return False
 
@@ -182,7 +182,7 @@ async def _run_war_for_user(user_tg_id: str, notify: Callable | None = None) -> 
         summary = (
             f"{report.format_report()}\n"
             f"{'─' * 28}\n"
-            f"💰 Saldo tersisa: <b>{final_bal}</b> war"
+            f"🎫 Tiket tersisa: <b>{final_bal}</b>"
         )
         await notify(user_tg_id, summary)
 
@@ -208,11 +208,10 @@ async def _war_warning_for_user(user_tg_id: str, notify: Callable | None = None)
         total_req = hero_per_cookie * len(selected_ids)
 
         if user.balance_war < total_req:
-            return  # gak ada saldo → skip warning
+            return
 
         wh, wm, tz_name = await _get_global_war_time(session)
 
-        # Latency
         from sqlalchemy import select as _sel
         r = await session.execute(
             _sel(LatencyLogModel).order_by(LatencyLogModel.timestamp.desc()).limit(1)
@@ -222,13 +221,13 @@ async def _war_warning_for_user(user_tg_id: str, notify: Callable | None = None)
 
     target_label = f"{wh:02d}:{wm:02d} {tz_name}"
     msg = (
-        f"⚠️ <b>War Otomatis Segera!</b>\n\n"
-        f"Auto-war dalam ~5 menit menuju {target_label}\n\n"
-        f"⚡ Latensi terakhir: {lat_text}\n"
+        f"⚡ <b>War Otomatis Malam Ini!</b>\n\n"
+        f"Auto-war dalam ~5 menit ({target_label})\n\n"
+        f"⚡ Latensi: {lat_text}\n"
         f"🥊 Hero/cookie: {hero_per_cookie}\n"
         f"🍪 Cookie: {len(selected_ids)}\n"
-        f"📦 Total request: {total_req}\n"
-        f"💰 Saldo: {user.balance_war} → {user.balance_war - total_req}\n\n"
+        f"📦 Request: {total_req}\n"
+        f"🎫 Tiket: {user.balance_war} → {user.balance_war - total_req}\n\n"
         f"<i>Pastikan koneksi stabil.</i>"
     )
     await notify(user_tg_id, msg)

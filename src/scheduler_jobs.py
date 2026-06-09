@@ -85,25 +85,25 @@ async def _run_war_for_user(user_tg_id: str, notify: Callable | None = None) -> 
             logger.info(f"Auto-war skip: no cookies for {user.first_name or user_tg_id}")
             return False
 
-        hero_per_cookie: int = cfg.get("hero_per_cookie", 6)
-        total_req: int = hero_per_cookie * len(selected_ids)
+        hero_per_cookie: int = cfg.get("hero_per_cookie", 3)
+        cost: int = len(selected_ids)  # 1 tiket = 1 cookie
 
-        if user.balance_war < total_req:
-            logger.info(f"Auto-war skip: insufficient balance for {user.first_name or user_tg_id} ({user.balance_war} < {total_req})")
+        if user.balance_war < cost:
+            logger.info(f"Auto-war skip: insufficient balance for {user.first_name or user_tg_id} ({user.balance_war} < {cost})")
             if notify:
                 await notify(user_tg_id, (
                     f"⚠️ <b>Auto-War Dilewati</b>\n\n"
                     f"Tiket tidak cukup untuk war auto.\n"
                     f"🎫 Tiket: <b>{user.balance_war}</b>\n"
-                    f"🎯 Butuh: <b>{total_req}</b> tiket\n\n"
+                    f"🎯 Butuh: <b>{cost}</b> tiket ({len(selected_ids)} cookie)\n\n"
                     f"<i>Beli tiket dulu di menu 🎫 Beli Tiket War</i>"
                 ))
             return False
 
         # Deduct balance BEFORE war
         try:
-            await deduct_balance(session, user.id, total_req)
-            logger.info(f"Deducted {total_req} from {user.first_name or user_tg_id} (balance now {user.balance_war - total_req})")
+            await deduct_balance(session, user.id, cost)
+            logger.info(f"Deducted {cost} tiket from {user.first_name or user_tg_id} (balance now {user.balance_war - cost})")
         except Exception as e:
             logger.error(f"Balance deduct failed for {user_tg_id}: {e}")
             return False
@@ -144,7 +144,7 @@ async def _run_war_for_user(user_tg_id: str, notify: Callable | None = None) -> 
         war_tz=tz_name,
     )
 
-    logger.info(f"Auto-war: {user.first_name or user_tg_id} — {hero_per_cookie} heroes × {len(cookie_list)} cookies = {total_req} req")
+    logger.info(f"Auto-war: {user.first_name or user_tg_id} — {hero_per_cookie} heroes × {len(cookie_list)} cookies ({cost} tiket)")
     report: WarResultReport = await asyncio.to_thread(run_war_sync, config)
 
     # Save history + award tickets + final balance
@@ -204,10 +204,10 @@ async def _war_warning_for_user(user_tg_id: str, notify: Callable | None = None)
         if not selected_ids:
             return
 
-        hero_per_cookie = cfg.get("hero_per_cookie", 6)
-        total_req = hero_per_cookie * len(selected_ids)
+        hero_per_cookie = cfg.get("hero_per_cookie", 3)
+        cost = len(selected_ids)
 
-        if user.balance_war < total_req:
+        if user.balance_war < cost:
             return
 
         wh, wm, tz_name = await _get_global_war_time(session)
@@ -226,8 +226,8 @@ async def _war_warning_for_user(user_tg_id: str, notify: Callable | None = None)
         f"⚡ Latensi: {lat_text}\n"
         f"🥊 Hero/cookie: {hero_per_cookie}\n"
         f"🍪 Cookie: {len(selected_ids)}\n"
-        f"📦 Request: {total_req}\n"
-        f"🎫 Tiket: {user.balance_war} → {user.balance_war - total_req}\n\n"
+        f"🔄 Request: {hero_per_cookie * len(selected_ids)}\n"
+        f"🎫 Tiket: {user.balance_war} → {user.balance_war - cost}\n\n"
         f"<i>Pastikan koneksi stabil.</i>"
     )
     await notify(user_tg_id, msg)

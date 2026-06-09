@@ -657,12 +657,12 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             update.effective_chat.first_name)
         balance = user.balance_war
 
-    hero_count = cfg.get("hero_per_cookie", 6)
-    total_req = hero_count * len(selected_ids)
+    hero_count = cfg.get("hero_per_cookie", 3)
+    cost = len(selected_ids)  # 1 tiket = 1 cookie
 
-    if balance < total_req:
+    if balance < cost:
         await query.edit_message_text(
-            f"❌ Saldo tidak cukup!\n\n💰 Saldo: {balance} war\n🎯 Butuh: {total_req} war\n\n<i>Beli tiket dulu di 🎫 Beli Tiket War</i>",
+            f"❌ Tiket tidak cukup!\n\n🎫 Tiket: <b>{balance}</b>\n🎯 Butuh: <b>{cost}</b> tiket ({len(selected_ids)} cookie)\n\n<i>Beli tiket dulu di 🎫 Beli Tiket War</i>",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Beli Slot", callback_data="menu:beli")]])
         )
@@ -695,14 +695,14 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
     await query.edit_message_text(
-        f"⚔️ Memulai WAR\n\n🥊 {hero_count} hero/cookie\n🍪 {len(cookie_list)} cookie\n📦 Total: {total_req} request\n💰 Saldo: {balance} → {balance - total_req}\n\n⏰ War dalam ~20 detik...",
+        f"⚔️ Memulai WAR\n\n🥊 {hero_count} hero/cookie\n🍪 {len(cookie_list)} cookie\n🎫 Biaya: <b>{cost}</b> tiket\n🔄 Total: <b>{hero_count * len(cookie_list)}</b> request\n🎫 Tiket: {balance} → <b>{balance - cost}</b>\n\n⏰ War dalam ~20 detik...",
         parse_mode=ParseMode.HTML,
     )
 
     # Deduct balance before war
     try:
         async with AsyncSessionLocal() as session:
-            await deduct_balance(session, user.id, total_req)
+            await deduct_balance(session, user.id, cost)
     except Exception as e:
         logger.error(f"Balance deduct failed: {e}")
 
@@ -737,7 +737,7 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         u = await get_user(session, oid)
         final_balance = u.balance_war if u else "?"
 
-    summary = f"{report_text}\n{'─' * 28}\n💰 Saldo tersisa: {final_balance} war"
+    summary = f"{report_text}\n{'─' * 28}\n🎫 Tiket tersisa: <b>{final_balance}</b>"
 
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Menu Utama", callback_data="menu:main")]])
     await query.message.reply_text(summary, reply_markup=kb, parse_mode=ParseMode.HTML)

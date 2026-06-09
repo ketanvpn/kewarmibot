@@ -78,11 +78,23 @@ BOT_NAME = "⚔️ KeWarMiBot"
 async def _build_main_kb(update: Update) -> InlineKeyboardMarkup:
     """User menu — polished, professional, for awam."""
     cookies = await _cookies(update)
+    oid = _owner(update)
+
+    # Check war toggle state
+    war_on = True
+    async with AsyncSessionLocal() as session:
+        user = await get_user(session, oid)
+        if user:
+            war_on = user.war_enabled
+
+    toggle_text = "🟢 Ikut War Malam Ini" if war_on else "🔴 Tidak Ikut War"
+
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("👤 Profil & Saldo", callback_data="menu:profile")],
         [InlineKeyboardButton(f"🍪 Cookie Saya ({len(cookies)} tersimpan)", callback_data="menu:cookies")],
         [InlineKeyboardButton("🎫 Beli Tiket War", callback_data="menu:beli")],
         [InlineKeyboardButton("📜 Riwayat War", callback_data="menu:history")],
+        [InlineKeyboardButton(toggle_text, callback_data="menu:war_toggle")],
         [
             InlineKeyboardButton("📖 Panduan", callback_data="menu:guide"),
             InlineKeyboardButton("📞 Support", callback_data="menu:support"),
@@ -1483,7 +1495,7 @@ async def menu_guide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"<i>Apakah akun saya aman?</i> → Ya. Cookie kamu dienkripsi "
         f"dan hanya dipakai saat war otomatis. Tidak disimpan polos.\n"
         f"<i>Berapa kali war dalam 1 tiket?</i> → 1 tiket = 1 cookie = 1 malam war.\n"
-        f"<i>Bisa refund?</i> → Bisa. 100% uang kembali jika tidak puas.\n"
+        f"<i>Apakah hasil war dijamin?</i> → Tidak. Kami hanya menyediakan jasa war otomatis. Hasil tergantung server Xiaomi dan akun kamu.\n"
         f"<i>Kapan war dijalankan?</i> → Otomatis setiap malam pukul 00:00 WIB.\n"
     )
     
@@ -1523,7 +1535,7 @@ async def menu_support(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"<b>⭐ Rating Kami:</b>\n"
         f"★★★★★ 4.8/5 (234 reviews)\n"
         f"✅ 99.8% uptime\n"
-        f"✅ Refund 100% jika tidak puas\n"
+        f"✅ Tiket tidak kedaluwarsa — bisa dipakai kapan saja\n"
     )
     
     kb = InlineKeyboardMarkup([
@@ -1538,6 +1550,26 @@ async def menu_email_copy(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Copy email to clipboard."""
     query = update.callback_query
     await query.answer("📧 support@kewarmibot.id — copy ke notepad & kirim email ya!", show_alert=True)
+
+
+
+async def menu_war_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Toggle auto-war participation and return to menu."""
+    query = update.callback_query
+    await query.answer()
+    oid = _owner(update)
+
+    async with AsyncSessionLocal() as session:
+        from src.user_service import toggle_war_enabled
+        new_state = await toggle_war_enabled(session, oid)
+
+    if new_state:
+        await query.answer("🟢 Kamu akan ikut war malam ini!", show_alert=True)
+    else:
+        await query.answer("🔴 Kamu tidak ikut war malam ini. Tiket tetap aman.", show_alert=True)
+
+    # Refresh menu
+    await main_menu(update, context)
 
 
 # ─── Router ────────────────────────────────────────────
@@ -1561,6 +1593,7 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "menu:admin": menu_admin,
         "menu:guide": menu_guide,
         "menu:support": menu_support,
+        "menu:war_toggle": menu_war_toggle,
     }
 
     if data in static_routes:

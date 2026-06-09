@@ -70,3 +70,12 @@ async def user_count(session: AsyncSession) -> int:
     from sqlalchemy import func
     r = await session.execute(select(func.count(UserModel.id)))
     return r.scalar() or 0
+
+async def toggle_war_enabled(session: AsyncSession, telegram_id: str) -> bool:
+    """Toggle auto-war on/off for user. Returns new state."""
+    r = await session.execute(select(UserModel).where(UserModel.telegram_id == telegram_id))
+    user = r.scalar_one_or_none()
+    if user:
+        user.war_enabled = not user.war_enabled
+        await session.commit()
+    return user.war_enabled if user else True

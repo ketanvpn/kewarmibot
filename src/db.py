@@ -78,6 +78,7 @@ class UserModel(BaseModel):
     total_tickets: Mapped[int] = mapped_column(Integer, default=0)
     is_suspended: Mapped[bool] = mapped_column(Boolean, default=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    war_enabled: Mapped[bool] = mapped_column(Boolean, default=True)  # user can toggle auto-war on/off
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

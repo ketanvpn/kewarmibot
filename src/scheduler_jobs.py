@@ -78,6 +78,10 @@ async def _run_war_for_user(user_tg_id: str, notify: Callable | None = None) -> 
             logger.info(f"Auto-war skip: user {user_tg_id} suspended")
             return False
 
+        if not user.war_enabled:
+            logger.info(f"Auto-war skip: user {user.first_name or user_tg_id} disabled auto-war")
+            return False
+
         cfg = await load_config(session, user_tg_id)
         selected_ids: list[int] = cfg.get("cookie_ids", [])
 
@@ -279,7 +283,7 @@ def start_scheduler(get_notifier: Callable | None = None):
         # Get ALL users (bukan cuma admin)
         async with AsyncSessionLocal() as session:
             from src.db import UserModel
-            r = await session.execute(select(UserModel).where(UserModel.is_suspended == False))
+            r = await session.execute(select(UserModel).where(UserModel.is_suspended == False, UserModel.war_enabled == True))
             users = r.scalars().all()
 
         for user in users:

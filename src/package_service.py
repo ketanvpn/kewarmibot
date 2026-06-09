@@ -51,9 +51,17 @@ async def list_user_orders(session: AsyncSession, user_id: int, limit: int = 5) 
     )
     return r.scalars().all()
 
-async def mark_order_paid(session: AsyncSession, order_ref: str, user_id: int) -> bool:
+async def get_order(session: AsyncSession, order_ref: str) -> OrderModel | None:
+    """Get order by reference."""
+    r = await session.execute(select(OrderModel).where(OrderModel.order_ref == order_ref))
+    return r.scalar_one_or_none()
+
+async def mark_order_paid(session: AsyncSession, order_ref: str, user_id: int | None = None) -> bool:
     """Mark order paid + add balance to user."""
-    r = await session.execute(select(OrderModel).where(OrderModel.order_ref == order_ref, OrderModel.user_id == user_id))
+    if user_id is not None:
+        r = await session.execute(select(OrderModel).where(OrderModel.order_ref == order_ref, OrderModel.user_id == user_id))
+    else:
+        r = await session.execute(select(OrderModel).where(OrderModel.order_ref == order_ref))
     order = r.scalar_one_or_none()
     if not order:
         return False

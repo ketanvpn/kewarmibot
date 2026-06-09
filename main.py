@@ -57,6 +57,11 @@ async def main():
     start_scheduler(get_notifier=_notify)
     logger.info("Scheduler started")
 
+    # Start webhook server for payment callbacks
+    from src.webhook_server import run_webhook_server
+    run_webhook_server(port=8001, notifier=_notify)
+    logger.info("Webhook server started on :8001")
+
     # Keep alive with graceful shutdown
     stop_event = asyncio.Event()
 

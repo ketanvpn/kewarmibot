@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     war_bracket_factor_default: float = 0.8
     war_safety_margin_default: int = 30
 
+    # KetantechPay payment gateway
+    ketantechpay_base_url: str = ""
+    ketantechpay_client_key: str = ""
+    ketantechpay_webhook_secret: str = ""
+    webhook_base_url: str = ""
+
     @property
     def admin_ids(self) -> set[int]:
         return {int(x.strip()) for x in self.admin_chat_ids.split(",") if x.strip()}

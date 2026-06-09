@@ -2,11 +2,11 @@
 from src.bot.handlers._common import *
 
 # Cross-module imports for build_app
-from src.bot.handlers.menu import start, admin_command, main_menu
+from src.bot.handlers.menu import start, admin_command, cmd_menu, main_menu
 from src.bot.handlers.cookies import (
     cookie_add_start, cookie_add_name, cookie_add_token, cookie_add_cancel,
     cookie_detail, cookie_refresh, cookie_refresh_all,
-    cookie_delete_confirm, cookie_delete, menucookies_list,
+    cookie_delete_confirm, cookie_delete, menu_cookies,
 )
 from src.bot.handlers.info import menu_status, menu_history, menu_stats, menu_profile
 from src.bot.handlers.config import menu_config, config_set
@@ -21,8 +21,7 @@ from src.bot.handlers.admin import (
 from src.bot.handlers.pool import pool_handle_text
 from src.bot.handlers.guide import menu_guide, menu_support, menu_email_copy
 
-
-# ─── Router ────────────────────────────────────────────
+# ─── Callback Router ───────────────────────────────────
 
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -32,7 +31,7 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     static_routes = {
         "menu:main": main_menu,
         "menu:profile": menu_profile,
-        "menu:cookies": menucookies_list,
+        "menu:cookies": menu_cookies,
         "menu:status": menu_status,
         "menu:config": menu_config,
         "menu:war_debug": war_debug,
@@ -43,7 +42,7 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "menu:admin": menu_admin,
         "menu:guide": menu_guide,
         "menu:support": menu_support,
-        "menu:war_toggle": menu_war_toggle,
+        "menu:email_copy": menu_email_copy,
     }
 
     if data in static_routes:
@@ -90,59 +89,55 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await admin_setting_edit(update, context)
     elif data == "admin:revenue":
         await admin_revenue(update, context)
-    elif data == "menu:email_copy":
-        await menu_email_copy(update, context)
     else:
         await main_menu(update, context)
 
 
-# ─── Quick Commands —————————————————————————————————————
+# ─── Quick Commands ────────────────────────────────────
 
 async def _fake_query(update: Update, data: str):
-    """Create minimal fake callback_query for menu handlers."""
-    # Wrapper so reply_text works instead of edit_message_text
     class FakeQuery:
         data = data
-        answer = lambda *a, **kw: None
-        def __init__(self, msg):
-            self.message = msg
-        def edit_message_text(self, text, **kw):
-            return asyncio.ensure_future(self.message.reply_text(text, **kw))
-    update.callback_query = FakeQuery(update.message)
+        message = update.message
+        async def answer(self, *a, **kw): pass
+        async def edit_message_text(self, text, **kw):
+            return await self.message.reply_text(text, **kw)
+    update.callback_query = FakeQuery()
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/status — jump to status dashboard."""
-    _fake_query(update, "menu:status")
+    await _fake_query(update, "menu:status")
     await menu_status(update, context)
 
 async def cmd_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/config — jump to war config."""
-    _fake_query(update, "menu:config")
+    await _fake_query(update, "menu:config")
     await menu_config(update, context)
 
 async def cmd_war(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/war — trigger debug war."""
-    _fake_query(update, "menu:war_debug")
+    await _fake_query(update, "menu:war_debug")
     await war_debug(update, context)
 
 async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/riwayat — war history."""
-    _fake_query(update, "menu:history")
+    await _fake_query(update, "menu:history")
     await menu_history(update, context)
 
 
+# ─── Application Builder ───────────────────────────────
 
 def build_app() -> Application:
     app = Application.builder().token(settings.bot_token).build()
 
+    # User commands
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("menu", cmd_menu))
+    # Admin command
     app.add_handler(CommandHandler("admin", admin_command))
-    app.add_handler(CommandHandler("menu", start))
+    # Quick jumps
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("config", cmd_config))
     app.add_handler(CommandHandler("war", cmd_war))
     app.add_handler(CommandHandler("riwayat", cmd_history))
 
+    # Cookie add conversation
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(cookie_add_start, pattern="^cookie:add$")],
         states={
@@ -151,11 +146,18 @@ def build_app() -> Application:
         },
         fallbacks=[CommandHandler("cancel", cookie_add_cancel)],
     )
-    # Proxy add + Settings edit + Package edit: text input handler
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_input_handler), group=1)
-
     app.add_handler(conv)
 
-    app.add_handler(CallbackQueryHandler(menu_router, pattern="^(menu|cookie|cfg|autowar|pool|beli|admin):"))
+    # Text input (admin topup, package edit, proxy add)
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+        text_input_handler,
+    ), group=1)
+
+    # All callback queries
+    app.add_handler(CallbackQueryHandler(
+        menu_router,
+        pattern="^(menu|cookie|cfg|autowar|pool|beli|admin):",
+    ))
 
     return app

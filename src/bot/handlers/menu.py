@@ -1,16 +1,17 @@
 """KeWarMiBot — Main menu, /start, /admin"""
 from src.bot.handlers._common import *
 
-# ─── /start — Welcome + Main Menu ──────────────────────
+# ─── /start — User Welcome (public) ────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """User menu — /start command. Register user + show welcome + main menu."""
+    """User /start — welcome then main menu."""
     oid = owner_id(update)
     async with AsyncSessionLocal() as session:
         user = await get_or_create_user(session, oid,
             update.effective_chat.username,
             update.effective_chat.first_name,
             update.effective_chat.last_name)
+        bal = user.balance_war if user else 0
 
     # Welcome message (only for /start command, not callback refreshes)
     if update.message:
@@ -24,35 +25,49 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"1️⃣ 🍪 <b>Tambah Cookie</b> — login Xiaomi\n"
             f"2️⃣ 🎫 <b>Beli Tiket</b> — Rp 15rb via QRIS\n"
             f"3️⃣ ⚔️ <b>War Otomatis</b> — tiap jam 00:00 WIB\n\n"
-            f"📖 <i>Panduan lengkap: menu 📖 Panduan</i>"
+            f"🎫 Tiket kamu: <b>{bal}</b>\n"
+            f"📖 <i>Panduan lengkap: tombol 📖 Panduan</i>"
         )
         await update.message.reply_text(welcome, parse_mode=ParseMode.HTML)
 
     await main_menu(update, context)
 
 
-# ─── /admin — Admin Panel (admin-only) ─────────────────
+# ─── /menu — Quick Main Menu (no welcome) ──────────────
+
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/menu — langsung ke main menu tanpa welcome."""
+    await main_menu(update, context)
+
+
+# ─── /admin — Admin Dashboard (admin only) ─────────────
 
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Admin panel — /admin command. Locked to admin only."""
+    """Admin panel — /admin command. Shows full dashboard."""
     oid = owner_id(update)
     if oid not in {str(x) for x in settings.admin_ids} and oid != "690744680":
-        await update.message.reply_text("⛔ Akses ditolak.", parse_mode=ParseMode.HTML)
+        await update.message.reply_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
         return
 
     async with AsyncSessionLocal() as session:
         from src.user_service import user_count as uc
         from src.package_service import revenue_today as rt
+        from src.db import select, func, OrderModel
         total_users = await uc(session)
         revenue = await rt(session)
+        # Order stats
+        r = await session.execute(select(func.count()).select_from(OrderModel).where(OrderModel.status == "paid"))
+        paid = r.scalar() or 0
+        r = await session.execute(select(func.count()).select_from(OrderModel).where(OrderModel.status == "waiting_payment"))
+        waiting = r.scalar() or 0
 
     text = (
-        f"🛡️ <b>Admin Panel</b>\n"
+        f"🛡️ <b>Admin Dashboard</b>\n"
         f"{SEP}\n"
-        f"👥 Total User: <b>{total_users}</b>\n"
-        f"💰 Revenue Hari Ini: <b>Rp {revenue:,}</b>\n"
+        f"👥 User: <b>{total_users}</b>     ·     💰 Hari Ini: <b>Rp {revenue:,}</b>\n"
+        f"📦 Order Paid: <b>{paid}</b>     ·     ⏳ Waiting: <b>{waiting}</b>\n"
         f"{SEP}\n"
-        f"<i>Panel administrasi lengkap:</i>"
+        f"<b>Panel Admin:</b>"
     )
 
     kb = InlineKeyboardMarkup([
@@ -61,13 +76,17 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         [InlineKeyboardButton("💳 Payment Settings", callback_data="admin:settings"),
          InlineKeyboardButton("📊 Revenue", callback_data="admin:revenue")],
         [InlineKeyboardButton("🔌 Pool Proxy", callback_data="pool:menu"),
-         InlineKeyboardButton("📊 Status Server", callback_data="menu:status")],
+         InlineKeyboardButton("⚙️ War Config", callback_data="menu:config")],
+        [InlineKeyboardButton("⚔️ War Debug", callback_data="menu:war_debug"),
+         InlineKeyboardButton("📊 Status", callback_data="menu:status")],
+        [InlineKeyboardButton("⏰ Auto-War", callback_data="menu:autowar"),
+         InlineKeyboardButton("📜 Riwayat", callback_data="menu:history")],
         [InlineKeyboardButton("« Menu Utama", callback_data="menu:main")],
     ])
     await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
 
-# ─── Main Menu — User Panel ───────────────────────────
+# ─── Main Menu — Public User Panel ─────────────────────
 
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -116,9 +135,25 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"<b>📋 Menu:</b>"
     )
 
-    kb = await build_main_kb(update)
+    kb = user_main_kb(update, aw_enabled)
 
     if query:
         await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
     else:
         await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+
+
+# ─── User-Only Keyboard ────────────────────────────────
+
+def user_main_kb(update: Update, war_enabled: bool = True) -> InlineKeyboardMarkup:
+    """Public user main menu keyboard."""
+    toggle = "🟢" if war_enabled else "🔴"
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🍪 Cookie Saya", callback_data="menu:cookies"),
+         InlineKeyboardButton("🎫 Beli Tiket", callback_data="menu:beli")],
+        [InlineKeyboardButton("📜 Riwayat War", callback_data="menu:history"),
+         InlineKeyboardButton("👤 Profil Saya", callback_data="menu:profile")],
+        [InlineKeyboardButton("📖 Panduan", callback_data="menu:guide"),
+         InlineKeyboardButton(f"⏰ {toggle}", callback_data="menu:autowar")],
+        [InlineKeyboardButton("💬 Support", callback_data="menu:support")],
+    ])

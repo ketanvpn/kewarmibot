@@ -3,7 +3,7 @@ from src.bot.handlers._common import *
 
 # ─── Cookie Management ─────────────────────────────────
 
-async def menucookies_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     cookies = await cookies_list(update)

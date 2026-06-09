@@ -64,15 +64,67 @@ class WarConfigModel(BaseModel):
     )
 
 
+class UserModel(BaseModel):
+    """Multi-tenant user + balance."""
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    username: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    balance_war: Mapped[int] = mapped_column(Integer, default=0)
+    total_wars: Mapped[int] = mapped_column(Integer, default=0)
+    total_tickets: Mapped[int] = mapped_column(Integer, default=0)
+    is_suspended: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+class PackageModel(BaseModel):
+    """War slot packages."""
+    __tablename__ = "packages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    war_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_idr: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+
+class OrderModel(BaseModel):
+    """Payment orders."""
+    __tablename__ = "orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    package_id: Mapped[int] = mapped_column(ForeignKey("packages.id"), nullable=False)
+    order_ref: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    amount_idr: Mapped[int] = mapped_column(Integer, nullable=False)
+    war_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    payment_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    paid_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+
+class BotSettingModel(BaseModel):
+    """Key-value config store."""
+    __tablename__ = "bot_settings"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
 class WarHistoryModel(BaseModel):
     __tablename__ = "war_history"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     config_id: Mapped[int] = mapped_column(ForeignKey("war_config.id"), nullable=True)
     started_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )
-    results: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
+    results: Mapped[str | None] = mapped_column(Text, nullable=True)
     success_count: Mapped[int] = mapped_column(Integer, default=0)
     fail_count: Mapped[int] = mapped_column(Integer, default=0)
     latency_median_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)

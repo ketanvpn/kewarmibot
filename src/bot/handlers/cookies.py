@@ -3,10 +3,10 @@ from src.bot.handlers._common import *
 
 # ─── Cookie Management ─────────────────────────────────
 
-async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def menucookies_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    cookies = await _cookies(update)
+    cookies = await cookies_list(update)
 
     if not cookies:
         kb = InlineKeyboardMarkup([
@@ -64,7 +64,7 @@ async def cookie_add_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         pass
 
     async with AsyncSessionLocal() as session:
-        cookie = await add_cookie(session, name, token, _owner(update))
+        cookie = await add_cookie(session, name, token, owner_id(update))
 
     emoji, status = status_label(cookie)
     await update.message.reply_text(f"🍪 Cookie tersimpan!\n\n<b>{name}</b>: {emoji} {status}", parse_mode=ParseMode.HTML)
@@ -85,7 +85,7 @@ async def cookie_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     async with AsyncSessionLocal() as session:
         from sqlalchemy import select
-        r = await session.execute(select(CookieModel).where(CookieModel.id == cid, CookieModel.owner_chat_id == _owner(update)))
+        r = await session.execute(select(CookieModel).where(CookieModel.id == cid, CookieModel.owner_chat_id == owner_id(update)))
         cookie = r.scalar_one_or_none()
 
     if not cookie:
@@ -111,7 +111,7 @@ async def cookie_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.answer()
     cid = int(query.data.split(":")[-1])
     async with AsyncSessionLocal() as session:
-        cookie = await refresh_cookie_status(session, cid, _owner(update))
+        cookie = await refresh_cookie_status(session, cid, owner_id(update))
     if not cookie:
         await query.edit_message_text("❌ Cookie tidak ditemukan.")
         return
@@ -122,7 +122,7 @@ async def cookie_refresh_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Refresh status semua cookie sekaligus."""
     query = update.callback_query
     await query.answer()
-    cookies = await _cookies(update)
+    cookies = await cookies_list(update)
 
     if not cookies:
         await query.edit_message_text("🍪 <b>Belum ada cookie.</b>", parse_mode=ParseMode.HTML)
@@ -135,7 +135,7 @@ async def cookie_refresh_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
     async with AsyncSessionLocal() as session:
         for c in cookies:
             try:
-                await refresh_cookie_status(session, c.id, _owner(update))
+                await refresh_cookie_status(session, c.id, owner_id(update))
                 ok += 1
                 lines.append(f"✅ {c.name}")
             except Exception as e:
@@ -164,7 +164,7 @@ async def cookie_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await query.answer()
     cid = int(query.data.split(":")[-1])
     async with AsyncSessionLocal() as session:
-        deleted = await delete_cookie(session, cid, _owner(update))
+        deleted = await delete_cookie(session, cid, owner_id(update))
     await query.edit_message_text("🗑 Cookie dihapus." if deleted else "❌ Gagal menghapus.")
     await asyncio.sleep(0.5)
     await main_menu(update, context)

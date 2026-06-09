@@ -65,24 +65,24 @@ def set_bot_instance(bot):
     global _bot
     _bot = bot
 
-def _owner(update: Update) -> str:
+def owner_id(update: Update) -> str:
     """Extract chat id as string."""
     return str(update.effective_chat.id)
 
-async def _cfg_dict(update: Update) -> dict:
+async def cfg_dict(update: Update) -> dict:
     """Load war config for given update's owner."""
-    oid = _owner(update)
+    oid = owner_id(update)
     async with AsyncSessionLocal() as session:
         return await load_config(session, oid)
 
-async def _cookies(update: Update):
+async def cookies_list(update: Update):
     """List cookies for given update's owner."""
     async with AsyncSessionLocal() as session:
-        return await list_cookies(session, _owner(update))
+        return await list_cookies(session, owner_id(update))
 
-async def _build_main_kb(update: Update) -> InlineKeyboardMarkup:
+async def build_main_kb(update: Update) -> InlineKeyboardMarkup:
     """Build main menu keyboard with dynamic auto-war status."""
-    oid = _owner(update)
+    oid = owner_id(update)
     async with AsyncSessionLocal() as session:
         user = await get_user(session, oid)
         bal = user.balance_war if user else 0
@@ -114,17 +114,17 @@ WAIT_COOKIE_NAME, WAIT_COOKIE_TOKEN = range(2)
 #  UI helpers
 # ────────────────────────────────────────────────────────
 
-def _back_button(label: str = "« Kembali", callback: str = "menu:main") -> list[InlineKeyboardButton]:
+def back_button(label: str = "« Kembali", callback: str = "menu:main") -> list[InlineKeyboardButton]:
     """Single back button."""
     return [InlineKeyboardButton(label, callback_data=callback)]
 
-def _back_kb(callback: str = "menu:main", extra: list[list[InlineKeyboardButton]] | None = None) -> InlineKeyboardMarkup:
+def back_kb(callback: str = "menu:main", extra: list[list[InlineKeyboardButton]] | None = None) -> InlineKeyboardMarkup:
     """Keyboard with back button + optional extra row."""
     buttons = extra or []
     buttons.append([InlineKeyboardButton("« Kembali", callback_data=callback)])
     return InlineKeyboardMarkup(buttons)
 
-def _countdown_text(target_ms: int) -> str:
+def countdown_text(target_ms: int) -> str:
     """Format countdown HH:MM:SS until target_ms."""
     remain_s = (target_ms - int(_time.time() * 1000)) // 1000
     h, rem = divmod(abs(remain_s), 3600)
@@ -134,18 +134,21 @@ def _countdown_text(target_ms: int) -> str:
 
 _SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
 
-def _spark_block(val: int, vmin: int, vmax: int) -> str:
+def spark_block(val: int, vmin: int, vmax: int) -> str:
     """Single block of sparkline."""
     if vmax == vmin:
         return _SPARK_BLOCKS[3]
     idx = int((val - vmin) / (vmax - vmin) * (len(_SPARK_BLOCKS) - 1))
     return _SPARK_BLOCKS[max(0, min(idx, len(_SPARK_BLOCKS) - 1))]
 
-async def _quick_back(query, text: str, callback: str = "menu:main"):
+async def quick_back(query, text: str, callback: str = "menu:main"):
     """Show simple message with back button."""
-    await query.edit_message_text(text, reply_markup=_back_kb(callback), parse_mode=ParseMode.HTML)
+    await query.edit_message_text(text, reply_markup=back_kb(callback), parse_mode=ParseMode.HTML)
 
-async def _refresh_menu(query, handler, *args, **kwargs):
+async def refresh_menu(query, handler, *args, **kwargs):
     """Answer callback & refresh same menu."""
     await query.answer()
     await handler(query, *args, **kwargs)
+
+# Force export of private helpers (Python's import * skips _-prefixed names)
+__all__ = [x for x in dir() if not x.startswith('__')]

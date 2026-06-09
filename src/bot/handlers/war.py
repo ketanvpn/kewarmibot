@@ -6,7 +6,7 @@ from src.bot.handlers._common import *
 async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    oid = _owner(update)
+    oid = owner_id(update)
 
     from src.engine.war_runner import execute_war
 
@@ -27,7 +27,7 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def menu_autowar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    oid = _owner(update)
+    oid = owner_id(update)
     async with AsyncSessionLocal() as session:
         user = await get_user(session, oid)
         enabled = user.war_enabled if user else True
@@ -52,7 +52,7 @@ async def menu_autowar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def autowar_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    oid = _owner(update)
+    oid = owner_id(update)
     async with AsyncSessionLocal() as session:
         new_state = await toggle_war_enabled(session, oid)
     await menu_autowar(update, context)
@@ -62,7 +62,7 @@ async def autowar_run_now(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Manual trigger real war (not debug)."""
     query = update.callback_query
     await query.answer()
-    oid = _owner(update)
+    oid = owner_id(update)
 
     from src.engine.war_runner import execute_war
 

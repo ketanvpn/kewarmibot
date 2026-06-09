@@ -15,7 +15,7 @@ async def pool_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if not lines:
             await update.message.reply_text("❌ Kirim proxy dlm format:\n<code>user:pass:host:port</code>", parse_mode=ParseMode.HTML)
             return
-        oid = _owner(update)
+        oid = owner_id(update)
         async with AsyncSessionLocal() as session:
             result = await pool_add(session, oid, lines)
         await update.message.reply_text(
@@ -27,7 +27,7 @@ async def _pool_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Proxy pool menu router."""
     query = update.callback_query
     data = query.data
-    oid = _owner(update)
+    oid = owner_id(update)
 
     if data == "pool:menu":
         async with AsyncSessionLocal() as s:

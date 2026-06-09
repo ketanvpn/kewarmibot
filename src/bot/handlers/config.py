@@ -7,8 +7,8 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     await query.answer()
 
-    cfg = await _cfg_dict(update)
-    cookies = await _cookies(update)
+    cfg = await cfg_dict(update)
+    cookies = await cookies_list(update)
     selected_ids = cfg.get("cookie_ids", [])
     # Cookie lines
     cookie_lines = []
@@ -67,7 +67,7 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     data = query.data.split(":")
     field = data[1] if len(data) > 1 else ""
 
-    cfg = await _cfg_dict(update)
+    cfg = await cfg_dict(update)
     selected_ids = cfg.get("cookie_ids", [])
 
     if field == "hero":
@@ -110,7 +110,7 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 return
             selected_ids = selected_ids + [cid]
         async with AsyncSessionLocal() as session:
-            await save_config(session, _owner(update),
+            await save_config(session, owner_id(update),
                               cookie_ids=selected_ids,
                               hero_per_cookie=cfg.get("hero_per_cookie", 6),
                               bracket_factor=cfg["bracket_factor"],
@@ -165,7 +165,7 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         if param == "tz":
             val = data[3]
             async with AsyncSessionLocal() as session:
-                await save_config(session, _owner(update),
+                await save_config(session, owner_id(update),
                                   cookie_ids=selected_ids,
                                   hero_per_cookie=cfg.get("hero_per_cookie", 6),
                                   bracket_factor=cfg["bracket_factor"],
@@ -181,7 +181,7 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             wh = int(data[3])
             wm = int(data[4]) if len(data) > 4 else 0
             async with AsyncSessionLocal() as session:
-                await save_config(session, _owner(update),
+                await save_config(session, owner_id(update),
                                   cookie_ids=selected_ids,
                                   hero_per_cookie=cfg.get("hero_per_cookie", 6),
                                   bracket_factor=cfg["bracket_factor"],
@@ -196,7 +196,7 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             bracket = val if param == "bracket" else cfg["bracket_factor"]
             safety = val if param == "safety" else cfg["safety_margin"]
             async with AsyncSessionLocal() as session:
-                await save_config(session, _owner(update),
+                await save_config(session, owner_id(update),
                                   cookie_ids=selected_ids,
                                   hero_per_cookie=hero,
                                   bracket_factor=bracket,

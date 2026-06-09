@@ -6,7 +6,7 @@ from src.bot.handlers._common import *
 async def menu_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    oid = _owner(update)
+    oid = owner_id(update)
 
     if oid not in {str(x) for x in settings.admin_ids} and oid != "690744680":
         await query.edit_message_text("⛔ Akses ditolak.")

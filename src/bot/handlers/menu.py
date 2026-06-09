@@ -5,7 +5,7 @@ from src.bot.handlers._common import *
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """User menu — /start command. Auto-register."""
-    tg_id = _owner(update)
+    tg_id = owner_id(update)
     async with AsyncSessionLocal() as session:
         await get_or_create_user(session, tg_id,
             update.effective_chat.username,
@@ -15,7 +15,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Admin panel — /admin command. Locked to admin only."""
-    oid = _owner(update)
+    oid = owner_id(update)
     if oid not in {str(x) for x in settings.admin_ids} and oid != "690744680":
         await update.message.reply_text("⛔ Akses ditolak.", parse_mode=ParseMode.HTML)
         return
@@ -44,11 +44,11 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    oid = _owner(update)
+    oid = owner_id(update)
 
     # Fetch all state
-    cfg = await _cfg_dict(update)
-    cookies = await _cookies(update)
+    cfg = await cfg_dict(update)
+    cookies = await cookies_list(update)
 
     # Auto-war status from DB
     async with AsyncSessionLocal() as session:
@@ -98,7 +98,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text += f"{'─' * 28}\n"
     text += f"Pilih menu:"
 
-    kb = await _build_main_kb(update)
+    kb = await build_main_kb(update)
 
     if query:
         await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)

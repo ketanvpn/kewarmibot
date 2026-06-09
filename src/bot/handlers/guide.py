@@ -108,7 +108,7 @@ async def menu_war_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Toggle auto-war participation and return to menu."""
     query = update.callback_query
     await query.answer()
-    oid = _owner(update)
+    oid = owner_id(update)
 
     async with AsyncSessionLocal() as session:
         from src.user_service import toggle_war_enabled

@@ -41,7 +41,7 @@ async def menu_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     h, rem = divmod(abs(remain_s), 3600)
     m, s = divmod(rem, 60)
 
-    cookies = await _cookies(update)
+    cookies = await cookies_list(update)
 
     lines = [
         "📊 <b>Status</b>",
@@ -135,7 +135,7 @@ async def menu_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         # Fetch cookie names for lookup
         cookies_result = await session.execute(
-            select(CookieModel).where(CookieModel.owner_chat_id == _owner(update))
+            select(CookieModel).where(CookieModel.owner_chat_id == owner_id(update))
         )
         cookies = {c.id: c.name for c in cookies_result.scalars().all()}
 
@@ -194,7 +194,7 @@ async def menu_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def menu_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    oid = _owner(update)
+    oid = owner_id(update)
 
     async with AsyncSessionLocal() as session:
         user = await get_or_create_user(session, oid,

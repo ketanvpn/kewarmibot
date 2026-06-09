@@ -6,7 +6,7 @@ from src.bot.handlers._common import *
 async def menu_beli(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    oid = _owner(update)
+    oid = owner_id(update)
 
     async with AsyncSessionLocal() as session:
         user = await get_or_create_user(session, oid,
@@ -28,7 +28,7 @@ async def menu_beli(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def menu_beli_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    oid = _owner(update)
+    oid = owner_id(update)
     data = query.data
 
     try:

@@ -6,7 +6,7 @@ from src.bot.handlers.menu import start, admin_command, main_menu
 from src.bot.handlers.cookies import (
     cookie_add_start, cookie_add_name, cookie_add_token, cookie_add_cancel,
     cookie_detail, cookie_refresh, cookie_refresh_all,
-    cookie_delete_confirm, cookie_delete, menu_cookies,
+    cookie_delete_confirm, cookie_delete, menucookies_list,
 )
 from src.bot.handlers.info import menu_status, menu_history, menu_stats, menu_profile
 from src.bot.handlers.config import menu_config, config_set
@@ -32,7 +32,7 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     static_routes = {
         "menu:main": main_menu,
         "menu:profile": menu_profile,
-        "menu:cookies": menu_cookies,
+        "menu:cookies": menucookies_list,
         "menu:status": menu_status,
         "menu:config": menu_config,
         "menu:war_debug": war_debug,

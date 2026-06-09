@@ -665,103 +665,17 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await query.answer()
     oid = _owner(update)
 
-    cfg = await _cfg_dict(update)
-    selected_ids = cfg.get("cookie_ids", [])
-    if not selected_ids:
-        await query.edit_message_text("❌ Pilih minimal 1 cookie di ⚙️ War Config!")
-        return
+    from src.engine.war_runner import execute_war
 
-    # Get user & balance
-    async with AsyncSessionLocal() as session:
-        user = await get_or_create_user(session, oid,
-            update.effective_chat.username,
-            update.effective_chat.first_name)
-        balance = user.balance_war
-
-    hero_count = cfg.get("hero_per_cookie", 3)
-    cost = len(selected_ids)  # 1 tiket = 1 cookie
-
-    if balance < cost:
-        await query.edit_message_text(
-            f"❌ Tiket tidak cukup!\n\n🎫 Tiket: <b>{balance}</b>\n🎯 Butuh: <b>{cost}</b> tiket ({len(selected_ids)} cookie)\n\n<i>Beli tiket dulu di 🎫 Beli Tiket War</i>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Beli Slot", callback_data="menu:beli")]])
-        )
-        return
-
-    # Load all cookie tokens
-    cookie_list = []
-    async with AsyncSessionLocal() as session:
-        for cid in selected_ids:
-            token = await get_cookie_token(session, cid, _owner(update))
-            if token:
-                r = await session.execute(select(CookieModel).where(CookieModel.id == cid, CookieModel.owner_chat_id == _owner(update)))
-                c = r.scalar_one_or_none()
-                cookie_list.append((token, c.name if c else "Unknown"))
-
-    if not cookie_list:
-        await query.edit_message_text("❌ Gagal decrypt cookie. Periksa kembali.")
-        return
-
-    config = WarConfig(
-        cookies=cookie_list,
-        hero_per_cookie=hero_count, bracket_factor=cfg["bracket_factor"],
-        safety_margin=cfg["safety_margin"], hero_spacing_ms=cfg.get("hero_spacing_ms", 0),
-        use_pool=True,
-        owner_chat_id=_owner(update),
-        debug=True,
-        war_hour=cfg.get("war_hour", 0),
-        war_minute=cfg.get("war_minute", 0),
-        war_tz=cfg.get("war_tz", "Asia/Shanghai"),
-    )
-
-    await query.edit_message_text(
-        f"⚔️ Memulai WAR\n\n🥊 {hero_count} hero/cookie\n🍪 {len(cookie_list)} cookie\n🎫 Biaya: <b>{cost}</b> tiket\n🔄 Total: <b>{hero_count * len(cookie_list)}</b> request\n🎫 Tiket: {balance} → <b>{balance - cost}</b>\n\n⏰ War dalam ~20 detik...",
-        parse_mode=ParseMode.HTML,
-    )
-
-    # Deduct balance before war
-    try:
-        async with AsyncSessionLocal() as session:
-            await deduct_balance(session, user.id, cost)
-    except Exception as e:
-        logger.error(f"Balance deduct failed: {e}")
-
-    report: WarResultReport = await asyncio.to_thread(run_war_sync, config)
-    report_text = report.format_report()
-
-    # Save to history with user_id
-    import json as _json
-    async with AsyncSessionLocal() as session:
-        from src.db import WarHistoryModel
-        history = WarHistoryModel(
-            user_id=user.id,
-            started_at=report.started_at,
-            results=_json.dumps([{"hero_id": r.hero_id, "success": r.success, "code": r.code, "msg": r.msg, "drift_ms": r.drift_ms, "cookie_name": r.cookie_name} for r in report.hero_results]),
-            success_count=report.success_count,
-            fail_count=report.fail_count,
-            latency_median_ms=report.latency_median_ms,
-        )
-        session.add(history)
-        await session.commit()
-
-    # Add tickets for success
-    if report.success_count > 0:
+    async def _notify(chat_id: str, msg: str):
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Menu Utama", callback_data="menu:main")]])
         try:
-            async with AsyncSessionLocal() as session:
-                await add_tickets(session, user.id, report.success_count)
-        except Exception:
-            pass
+            await query.message.reply_text(msg, reply_markup=kb, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            logger.error(f"war_debug notify failed: {e}")
 
-    # Final balance
-    async with AsyncSessionLocal() as session:
-        u = await get_user(session, oid)
-        final_balance = u.balance_war if u else "?"
-
-    summary = f"{report_text}\n{'─' * 28}\n🎫 Tiket tersisa: <b>{final_balance}</b>"
-
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Menu Utama", callback_data="menu:main")]])
-    await query.message.reply_text(summary, reply_markup=kb, parse_mode=ParseMode.HTML)
+    await query.edit_message_text("⚔️ <b>WAR DEBUG</b>\n\n⏰ War dalam ~20 detik...", parse_mode=ParseMode.HTML)
+    await execute_war(oid, debug=True, deduct=True, notify=_notify)
 
 
 # ─── Auto-War Toggle ───────────────────────────────────
@@ -804,51 +718,19 @@ async def autowar_run_now(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Manual trigger real war (not debug)."""
     query = update.callback_query
     await query.answer()
+    oid = _owner(update)
 
-    cfg = await _cfg_dict(update)
-    selected_ids = cfg.get("cookie_ids", [])
-    if not selected_ids:
-        await query.edit_message_text("❌ Pilih minimal 1 cookie di War Config!")
-        return
+    from src.engine.war_runner import execute_war
 
-    cookie_list = []
-    async with AsyncSessionLocal() as session:
-        for cid in selected_ids:
-            token = await get_cookie_token(session, cid, _owner(update))
-            if token:
-                r = await session.execute(select(CookieModel).where(CookieModel.id == cid, CookieModel.owner_chat_id == _owner(update)))
-                c = r.scalar_one_or_none()
-                cookie_list.append((token, c.name if c else "Unknown"))
-
-    if not cookie_list:
-        await query.edit_message_text("❌ Gagal decrypt cookie.")
-        return
-
-    config = WarConfig(
-        cookies=cookie_list,
-        hero_per_cookie=cfg.get("hero_per_cookie", 6), bracket_factor=cfg["bracket_factor"],
-        safety_margin=cfg["safety_margin"], debug=False,
-    )
+    async def _notify(chat_id: str, msg: str):
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Menu Utama", callback_data="menu:main")]])
+        try:
+            await query.message.reply_text(msg, reply_markup=kb, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            logger.error(f"autowar_run_now notify failed: {e}")
 
     await query.edit_message_text("⚔️ <b>WAR DIMULAI</b>\n\nMenunggu hasil...", parse_mode=ParseMode.HTML)
-    report = await asyncio.to_thread(run_war_sync, config)
-
-    async with AsyncSessionLocal() as session:
-        from src.db import WarHistoryModel
-        user = await get_user(session, oid)
-        history = WarHistoryModel(
-            user_id=user.id if user else None,
-            started_at=report.started_at,
-            results=json.dumps([{"hero_id": r.hero_id, "success": r.success, "code": r.code, "msg": r.msg, "drift_ms": r.drift_ms, "cookie_name": r.cookie_name} for r in report.hero_results]),
-            success_count=report.success_count,
-            fail_count=report.fail_count,
-            latency_median_ms=report.latency_median_ms,
-        )
-        session.add(history)
-        await session.commit()
-
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Menu Utama", callback_data="menu:main")]])
-    await query.message.reply_text(report.format_report(), reply_markup=kb, parse_mode=ParseMode.HTML)
+    await execute_war(oid, debug=False, deduct=False, notify=_notify)
 
 
 # ─── History ───────────────────────────────────────────

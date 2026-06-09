@@ -59,138 +59,25 @@ async def _save_latency():
 
 async def _run_war_for_user(user_tg_id: str, notify: Callable | None = None) -> bool:
     """
-    Run auto-war untuk satu user.
-    - Cek balance
-    - Load + decrypt cookie user
-    - Run war with proxy pool
-    - Deduct balance + award tickets
-    - Save history with user_id
-    - Notify user
-    Returns True kalau sukses, False kalau skip/gagal.
+    Run auto-war untuk satu user via execute_war().
     """
+    from src.engine.war_runner import execute_war
+
+    # Pre-check: suspended + war_enabled + has cookies
     async with AsyncSessionLocal() as session:
         user = await get_user(session, user_tg_id)
         if not user:
             logger.warning(f"Auto-war skip: user not found {user_tg_id}")
             return False
-
         if user.is_suspended:
             logger.info(f"Auto-war skip: user {user_tg_id} suspended")
             return False
-
         if not user.war_enabled:
             logger.info(f"Auto-war skip: user {user.first_name or user_tg_id} disabled auto-war")
             return False
 
-        cfg = await load_config(session, user_tg_id)
-        selected_ids: list[int] = cfg.get("cookie_ids", [])
-
-        if not selected_ids:
-            logger.info(f"Auto-war skip: no cookies for {user.first_name or user_tg_id}")
-            return False
-
-        hero_per_cookie: int = cfg.get("hero_per_cookie", 3)
-        cost: int = len(selected_ids)  # 1 tiket = 1 cookie
-
-        if user.balance_war < cost:
-            logger.info(f"Auto-war skip: insufficient balance for {user.first_name or user_tg_id} ({user.balance_war} < {cost})")
-            if notify:
-                await notify(user_tg_id, (
-                    f"⚠️ <b>Auto-War Dilewati</b>\n\n"
-                    f"Tiket tidak cukup untuk war auto.\n"
-                    f"🎫 Tiket: <b>{user.balance_war}</b>\n"
-                    f"🎯 Butuh: <b>{cost}</b> tiket ({len(selected_ids)} cookie)\n\n"
-                    f"<i>Beli tiket dulu di menu 🎫 Beli Tiket War</i>"
-                ))
-            return False
-
-        # Deduct balance BEFORE war
-        try:
-            await deduct_balance(session, user.id, cost)
-            logger.info(f"Deducted {cost} tiket from {user.first_name or user_tg_id} (balance now {user.balance_war - cost})")
-        except Exception as e:
-            logger.error(f"Balance deduct failed for {user_tg_id}: {e}")
-            return False
-
-        # Load + decrypt cookies
-        cookie_list: list[tuple[str, str]] = []
-        for cid in selected_ids:
-            try:
-                token = await get_cookie_token(session, cid, user_tg_id)
-                if token:
-                    r = await session.execute(select(CookieModel).where(CookieModel.id == cid, CookieModel.owner_chat_id == user_tg_id))
-                    c = r.scalar_one_or_none()
-                    cookie_list.append((token, c.name if c else f"Cookie #{cid}"))
-            except Exception as e:
-                logger.error(f"Decrypt failed for cookie {cid} (user {user_tg_id}): {e}")
-
-    if not cookie_list:
-        logger.error(f"Auto-war: no cookies loaded for {user.first_name or user_tg_id}")
-        if notify:
-            await notify(user_tg_id, "❌ <b>Auto-War Gagal</b>\n\nSemua cookie gagal diload. Cek ulang cookie di menu.")
-        return False
-
-    wh, wm, tz_name = 0, 0, "Asia/Shanghai"
-    async with AsyncSessionLocal() as session:
-        wh, wm, tz_name = await _get_global_war_time(session)
-
-    config = WarConfig(
-        cookies=cookie_list,
-        hero_per_cookie=hero_per_cookie,
-        bracket_factor=cfg["bracket_factor"],
-        safety_margin=cfg["safety_margin"],
-        hero_spacing_ms=cfg.get("hero_spacing_ms", 0),
-        use_pool=True,
-        owner_chat_id=user_tg_id,
-        debug=False,
-        war_hour=wh,
-        war_minute=wm,
-        war_tz=tz_name,
-    )
-
-    logger.info(f"Auto-war: {user.first_name or user_tg_id} — {hero_per_cookie} heroes × {len(cookie_list)} cookies ({cost} tiket)")
-    report: WarResultReport = await asyncio.to_thread(run_war_sync, config)
-
-    # Save history + award tickets + final balance
-    import json
-    async with AsyncSessionLocal() as session:
-        history = WarHistoryModel(
-            user_id=user.id,
-            started_at=report.started_at,
-            results=json.dumps([{
-                "hero_id": r.hero_id, "success": r.success,
-                "code": r.code, "msg": r.msg, "drift_ms": r.drift_ms,
-                "cookie_name": r.cookie_name,
-            } for r in report.hero_results]),
-            success_count=report.success_count,
-            fail_count=report.fail_count,
-            latency_median_ms=report.latency_median_ms,
-        )
-        session.add(history)
-        await session.commit()
-
-        if report.success_count > 0:
-            try:
-                await add_tickets(session, user.id, report.success_count)
-            except Exception:
-                pass
-
-        # Ambil final balance
-        user_final = await get_user_by_id(session, user.id)
-        final_bal = user_final.balance_war if user_final else "?"
-
-    logger.info(f"Auto-war done: {user.first_name or user_tg_id} ✅{report.success_count} ❌{report.fail_count} | balance={final_bal}")
-
-    # Notify user
-    if notify:
-        summary = (
-            f"{report.format_report()}\n"
-            f"{'─' * 28}\n"
-            f"🎫 Tiket tersisa: <b>{final_bal}</b>"
-        )
-        await notify(user_tg_id, summary)
-
-    return True
+    report = await execute_war(user_tg_id, debug=False, deduct=True, notify=notify)
+    return report is not None
 
 
 async def _war_warning_for_user(user_tg_id: str, notify: Callable | None = None):

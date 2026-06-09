@@ -1,41 +1,49 @@
 """KeWarMiBot — Admin panel: users, packages, settings, revenue"""
 from src.bot.handlers._common import *
 
-# ─── Admin Panel ─────────────────────────────────────
+# ─── Admin Dashboard (callback & /admin command) ────────
 
 async def menu_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Callback menu:admin — show admin dashboard inline."""
     query = update.callback_query
     await query.answer()
     oid = owner_id(update)
-
     if oid not in {str(x) for x in settings.admin_ids} and oid != "690744680":
-        await query.edit_message_text("⛔ Akses ditolak.")
+        await query.edit_message_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
         return
 
     async with AsyncSessionLocal() as session:
         from src.user_service import user_count as uc
         from src.package_service import revenue_today as rt
+        from sqlalchemy import select, func
+        from src.db import OrderModel
         total_users = await uc(session)
         revenue = await rt(session)
+        r = await session.execute(select(func.count()).select_from(OrderModel).where(OrderModel.status == "paid"))
+        paid = r.scalar() or 0
+        r = await session.execute(select(func.count()).select_from(OrderModel).where(OrderModel.status == "waiting_payment"))
+        waiting = r.scalar() or 0
 
-    text = f"🔰 <b>Admin Panel</b>\n{'─' * 28}\n👥 👥 User: <b>{total_users}</b>\n Hari Ini: <b>Rp {revenue:,}</b>"
-
+    text = (
+        f"🛡️ <b>Admin Dashboard</b>\n"
+        f"{SEP}\n"
+        f"👥 User: <b>{total_users}</b>     ·     💰 Hari Ini: <b>Rp {revenue:,}</b>\n"
+        f"📦 Order Paid: <b>{paid}</b>     ·     ⏳ Waiting: <b>{waiting}</b>\n"
+        f"{SEP}\n"
+        f"<b>Panel Admin:</b>"
+    )
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚙️ War Config", callback_data="menu:config")],
-        [InlineKeyboardButton("⏰ Auto-War", callback_data="menu:autowar")],
-        [
-            InlineKeyboardButton("📊 Status", callback_data="menu:status"),
-            InlineKeyboardButton("💳 Payment", callback_data="admin:settings"),
-        ],
-        [InlineKeyboardButton("👥 Kelola User", callback_data="admin:users")],
-        [
-            InlineKeyboardButton("📦 Paket", callback_data="admin:packages"),
-            InlineKeyboardButton("🔌 Pool", callback_data="pool:menu"),
-        ],
-        [
-            InlineKeyboardButton("📊 Revenue", callback_data="admin:revenue"),
-            InlineKeyboardButton("« Menu", callback_data="menu:main"),
-        ],
+        [InlineKeyboardButton("👥 Kelola User", callback_data="admin:users"),
+         InlineKeyboardButton("📦 Kelola Paket", callback_data="admin:packages")],
+        [InlineKeyboardButton("💳 Payment Settings", callback_data="admin:settings"),
+         InlineKeyboardButton("📊 Revenue", callback_data="admin:revenue")],
+        [InlineKeyboardButton("🔌 Pool Proxy", callback_data="pool:menu"),
+         InlineKeyboardButton("⚙️ War Config", callback_data="menu:config")],
+        [InlineKeyboardButton("⚔️ War Debug", callback_data="menu:war_debug"),
+         InlineKeyboardButton("📊 Status", callback_data="menu:status")],
+        [InlineKeyboardButton("⏰ Auto-War", callback_data="menu:autowar"),
+         InlineKeyboardButton("📜 Riwayat", callback_data="menu:history")],
+        [InlineKeyboardButton("« Menu Utama", callback_data="menu:main")],
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
@@ -50,10 +58,12 @@ async def admin_users_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         users = await list_users(session, limit=10)
 
     if not users:
-        await query.edit_message_text("👥 Belum ada user.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:admin")]]))
+        await query.edit_message_text("👥 Belum ada user.", reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("« Kembali", callback_data="menu:admin")
+        ]]))
         return
 
-    lines = ["👥 <b>Klik User untuk detail</b>"]
+    lines = ["👥 <b>Kelola User</b>", f"{SEP}"]
     kb_rows = []
     for u in users:
         s = "⛔" if u.is_suspended else "✅"
@@ -62,30 +72,35 @@ async def admin_users_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             callback_data=f"admin:user:{u.id}"
         )])
     kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:admin")])
-
     text = "\n".join(lines) + "\n\n<i>Klik user untuk topup/suspend.</i>"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode=ParseMode.HTML)
+
 
 async def admin_user_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     uid = int(query.data.split(":")[-1])
-
     async with AsyncSessionLocal() as session:
         from src.user_service import get_user_by_id
         from src.package_service import list_user_orders
         user = await get_user_by_id(session, uid)
         orders = await list_user_orders(session, uid, 5)
-
     if not user:
         await query.edit_message_text("❌ User tidak ditemukan.")
         return
 
     st = "⛔ SUSPENDED" if user.is_suspended else "✅ Aktif"
-    text = f"👤 <b>{user.first_name or user.username or user.telegram_id}</b>\n{'─' * 28}\n🆔 <code>{user.telegram_id}</code>\n📛 {st}\n🎫 Tiket: <b>{user.balance_war}</b>\n⚔️ Total War: <b>{user.total_wars}</b>\n🎫 Tiket: <b>{user.total_tickets}</b>"
-
+    text = (
+        f"👤 <b>{user.first_name or user.username or user.telegram_id}</b>\n"
+        f"{SEP}\n"
+        f"🆔 <code>{user.telegram_id}</code>\n"
+        f"📛 Status: {st}\n"
+        f"🎫 Tiket: <b>{user.balance_war}</b>\n"
+        f"⚔️ Total War: <b>{getattr(user, 'total_wars', 0)}</b>\n"
+        f"🎫 Sukses: <b>{getattr(user, 'total_tickets', 0)}</b>"
+    )
     if orders:
-        text += f"\n\n<b>Order Terakhir:</b>"
+        text += "\n\n<b>Order Terakhir:</b>"
         for o in orders[:3]:
             s = "✅" if o.status == "paid" else "⏳"
             text += f"\n  {s} {o.order_ref} — Rp {o.amount_idr:,}"
@@ -94,10 +109,14 @@ async def admin_user_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         [InlineKeyboardButton("➕ Topup +5 War", callback_data=f"admin:topup:{uid}:5")],
         [InlineKeyboardButton("➕ Topup +10 War", callback_data=f"admin:topup:{uid}:10")],
         [InlineKeyboardButton("➕ Topup +50 War", callback_data=f"admin:topup:{uid}:50")],
-        [InlineKeyboardButton("⛔ Suspend" if not user.is_suspended else "✅ Unsuspend", callback_data=f"admin:topup:{uid}:toggle")],
+        [InlineKeyboardButton(
+            "⛔ Suspend" if not user.is_suspended else "✅ Unsuspend",
+            callback_data=f"admin:topup:{uid}:toggle"
+        )],
         [InlineKeyboardButton("« User List", callback_data="admin:users")],
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+
 
 async def admin_user_topup_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -105,7 +124,6 @@ async def admin_user_topup_prompt(update: Update, context: ContextTypes.DEFAULT_
     parts = query.data.split(":")
     uid = int(parts[2])
     action = parts[3]
-
     async with AsyncSessionLocal() as session:
         from src.user_service import get_user_by_id, add_balance, set_suspended
         if action == "toggle":
@@ -116,7 +134,6 @@ async def admin_user_topup_prompt(update: Update, context: ContextTypes.DEFAULT_
             amount = int(action)
             new_balance = await add_balance(session, uid, amount)
             await query.answer(f"✅ +{amount} tiket → saldo {new_balance}", show_alert=True)
-
     query.data = f"admin:user:{uid}"
     await admin_user_detail(update, context)
 
@@ -128,69 +145,56 @@ async def admin_packages_list(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     async with AsyncSessionLocal() as session:
         pkgs = await list_packages(session, active_only=False)
-
-    lines = ["📦 <b>Kelola Paket Tiket War</b>"]
+    lines = ["📦 <b>Kelola Paket</b>", f"{SEP}"]
     kb_rows = []
     for p in pkgs:
         s = "🟢" if p.is_active else "🔴"
         lines.append(f"{s} <b>{p.name}</b> — {p.war_count} tiket @ Rp {p.price_idr:,}")
-        kb_rows.append([InlineKeyboardButton(
-            f"✏️ {p.name}",
-            callback_data=f"admin:pkg:edit:{p.id}"
-        )])
+        kb_rows.append([InlineKeyboardButton(f"✏️ {p.name}", callback_data=f"admin:pkg:edit:{p.id}")])
     kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:admin")])
-
-    text = "\n".join(lines) + "\n\n<i>Klik ✏️ untuk edit nama, tiket, harga.</i>"
+    text = "\n".join(lines) + "\n\n<i>Klik ✏️ untuk edit.</i>"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode=ParseMode.HTML)
 
+
 async def admin_pkg_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show detail edit form: nama, harga, tiket, toggle."""
     query = update.callback_query
     await query.answer()
-    parts = query.data.split(":")
-    pkg_id = int(parts[-1])
-
+    pkg_id = int(query.data.split(":")[-1])
     async with AsyncSessionLocal() as session:
         pkg = await get_package(session, pkg_id)
-
     if not pkg:
         await query.edit_message_text("❌ Paket tidak ditemukan.")
         return
-
     s = "🟢 AKTIF" if pkg.is_active else "🔴 NONAKTIF"
     text = (
         f"✏️ <b>Edit Paket</b>\n"
-        f"{'─' * 28}\n"
+        f"{SEP}\n"
         f"📛 Nama: <b>{pkg.name}</b>\n"
         f"🎫 Tiket: <b>{pkg.war_count}</b> (1 tiket = 1x war)\n"
         f"💰 Harga: <b>Rp {pkg.price_idr:,}</b>\n"
         f"📊 Status: <b>{s}</b>\n"
-        f"{'─' * 28}\n"
-        f"<i>Klik tombol di bawah untuk edit.</i>"
+        f"{SEP}\n"
+        f"<i>Klik tombol untuk edit.</i>"
     )
-
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📛 Edit Nama", callback_data=f"admin:pkg:name:{pkg_id}")],
         [InlineKeyboardButton("🎫 Edit Tiket", callback_data=f"admin:pkg:war:{pkg_id}")],
         [InlineKeyboardButton("💰 Edit Harga", callback_data=f"admin:pkg:price:{pkg_id}")],
-        [
-            InlineKeyboardButton(
-                "🔴 Nonaktifkan" if pkg.is_active else "🟢 Aktifkan",
-                callback_data=f"admin:pkg:toggle:{pkg_id}"
-            )
-        ],
+        [InlineKeyboardButton(
+            "🔴 Nonaktifkan" if pkg.is_active else "🟢 Aktifkan",
+            callback_data=f"admin:pkg:toggle:{pkg_id}"
+        )],
         [InlineKeyboardButton("« Kembali", callback_data="admin:packages")],
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
+
 async def admin_pkg_edit_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Prompt user to enter new value for a package field."""
     query = update.callback_query
     await query.answer()
     parts = query.data.split(":")
-    field = parts[2]  # name, war, price, toggle
+    field = parts[2]
     pkg_id = int(parts[3])
-
     if field == "toggle":
         async with AsyncSessionLocal() as session:
             pkg = await get_package(session, pkg_id)
@@ -200,14 +204,10 @@ async def admin_pkg_edit_field(update: Update, context: ContextTypes.DEFAULT_TYP
         query.data = f"admin:pkg:edit:{pkg_id}"
         await admin_pkg_edit(update, context)
         return
-
-    # Store pending edit in user_data
-    context.user_data["editing_pkg"] = {"id": pkg_id, "field": field}
     labels = {"name": "Nama Paket", "war": "Jumlah Tiket (1 tiket = 1x war)", "price": "Harga (Rp)"}
-    label = labels.get(field, field)
-
+    context.user_data["editing_pkg"] = {"id": pkg_id, "field": field}
     await query.edit_message_text(
-        f"✏️ <b>Edit {label}</b>\n\n"
+        f"✏️ <b>Edit {labels.get(field, field)}</b>\n\n"
         f"<i>Kirim value baru sekarang.</i>\n"
         f"<code>/cancel</code> untuk batal.",
         parse_mode=ParseMode.HTML,
@@ -216,23 +216,20 @@ async def admin_pkg_edit_field(update: Update, context: ContextTypes.DEFAULT_TYP
         ]])
     )
 
+
 async def admin_pkg_edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Save edited package field value."""
     pending = context.user_data.get("editing_pkg")
     if not pending:
         return
-
     pkg_id = pending["id"]
     field = pending["field"]
     raw = update.message.text.strip()
     context.user_data.pop("editing_pkg", None)
-
     async with AsyncSessionLocal() as session:
         pkg = await get_package(session, pkg_id)
         if not pkg:
             await update.message.reply_text("❌ Paket tidak ditemukan.", parse_mode=ParseMode.HTML)
             return
-
         try:
             if field == "name":
                 pkg.name = raw
@@ -247,7 +244,7 @@ async def admin_pkg_edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE
                 parse_mode=ParseMode.HTML
             )
         except ValueError:
-            await update.message.reply_text("❌ Format angka salah. Coba lagi.", parse_mode=ParseMode.HTML)
+            await update.message.reply_text("❌ Format angka salah.", parse_mode=ParseMode.HTML)
 
 
 # ─── Admin: Settings ─────────────────────────────────
@@ -257,10 +254,17 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     async with AsyncSessionLocal() as session:
         cfg = await get_payment_config(session)
-
     mask = lambda v: v[:8] + "•••" if v and len(v) > 10 else (v or "(kosong)")
-    text = f"💳 <b>Payment Settings</b>\n{'─' * 28}\n🔗 URL: <code>{cfg['base_url'][:40]}</code>\n🔑 Key: <code>{mask(cfg['client_key'])}</code>\n🔐 Secret: <code>{mask(cfg['webhook_secret'])}</code>\n🌐 Webhook: <code>{cfg['webhook_base'][:40]}</code>\n{'─' * 28}\n<i>Klik untuk edit.</i>"
-
+    text = (
+        f"💳 <b>Payment Settings</b>\n"
+        f"{SEP}\n"
+        f"🔗 URL: <code>{cfg['base_url'][:40]}</code>\n"
+        f"🔑 Key: <code>{mask(cfg['client_key'])}</code>\n"
+        f"🔐 Secret: <code>{mask(cfg['webhook_secret'])}</code>\n"
+        f"🌐 Webhook: <code>{cfg['webhook_base'][:40]}</code>\n"
+        f"{SEP}\n"
+        f"<i>Klik untuk edit.</i>"
+    )
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔗 Edit Base URL", callback_data="admin:setting:payment_base_url")],
         [InlineKeyboardButton("🔑 Edit Client Key", callback_data="admin:setting:payment_client_key")],
@@ -270,18 +274,27 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
+
 async def admin_setting_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     key = query.data.replace("admin:setting:", "")
     context.user_data["editing_setting"] = key
-
-    labels = {"payment_base_url": "Base URL", "payment_client_key": "Client Key", "payment_webhook_secret": "Webhook Secret", "webhook_base_url": "Webhook Base URL"}
-    label = labels.get(key, key)
-
-    await query.edit_message_text(f"✏️ <b>Edit {label}</b>\n\n<i>Kirim value baru.</i>\n<code>/cancel</code> batal.",
+    labels = {
+        "payment_base_url": "Base URL",
+        "payment_client_key": "Client Key",
+        "payment_webhook_secret": "Webhook Secret",
+        "webhook_base_url": "Webhook Base URL",
+    }
+    await query.edit_message_text(
+        f"✏️ <b>Edit {labels.get(key, key)}</b>\n\n"
+        f"<i>Kirim value baru.</i>\n"
+        f"<code>/cancel</code> batal.",
         parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Batal", callback_data="admin:settings")]]))
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("« Batal", callback_data="admin:settings")
+        ]])
+    )
 
 
 # ─── Admin: Revenue ─────────────────────────────────
@@ -299,8 +312,15 @@ async def admin_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         users = await uc(session)
         r = await session.execute(select(func.count(OrderModel.id)).where(OrderModel.status == "paid"))
         total_paid = r.scalar()
-
-    text = f"📊 <b>Revenue</b>\n{'─' * 28}\n👥 👥 User: <b>{users}</b>\n📦 Order Sukses: <b>{total_paid}</b>\n{'─' * 28}\n📅 Hari Ini: <b>Rp {today:,}</b>\n💰 Total: <b>Rp {total:,}</b>"
+    text = (
+        f"📊 <b>Revenue Report</b>\n"
+        f"{SEP}\n"
+        f"👥 User: <b>{users}</b>\n"
+        f"📦 Order Sukses: <b>{total_paid}</b>\n"
+        f"{SEP}\n"
+        f"📅 Hari Ini: <b>Rp {today:,}</b>\n"
+        f"💰 Total: <b>Rp {total:,}</b>"
+    )
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:admin")]])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
@@ -308,7 +328,6 @@ async def admin_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 # ─── Text Input Handler ─────────────────────────────
 
 async def text_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Unified text input: settings edit, package edit, or proxy add."""
     key = context.user_data.get("editing_setting")
     pkg = context.user_data.get("editing_pkg")
     if key:
@@ -318,15 +337,22 @@ async def text_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         await pool_handle_text(update, context)
 
+
 async def settings_edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     key = context.user_data.get("editing_setting")
     if not key:
         return
     value = update.message.text.strip()
-
     async with AsyncSessionLocal() as session:
         await set_setting(session, key, value)
     context.user_data.pop("editing_setting", None)
-
-    labels = {"payment_base_url": "Base URL", "payment_client_key": "Client Key", "payment_webhook_secret": "Webhook Secret", "webhook_base_url": "Webhook Base URL"}
-    await update.message.reply_text(f"✅ <b>{labels.get(key, key)}</b> tersimpan!", parse_mode=ParseMode.HTML)
+    labels = {
+        "payment_base_url": "Base URL",
+        "payment_client_key": "Client Key",
+        "payment_webhook_secret": "Webhook Secret",
+        "webhook_base_url": "Webhook Base URL",
+    }
+    await update.message.reply_text(
+        f"✅ <b>{labels.get(key, key)}</b> tersimpan!",
+        parse_mode=ParseMode.HTML
+    )

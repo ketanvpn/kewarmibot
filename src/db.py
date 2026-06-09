@@ -1,7 +1,7 @@
 """Database models — SQLAlchemy async."""
 
 import datetime
-from sqlalchemy import Integer, String, Text, Float, Boolean, DateTime, JSON, ForeignKey
+from sqlalchemy import Boolean, Integer, String, Text, Float, Boolean, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import select
@@ -114,6 +114,20 @@ class BotSettingModel(BaseModel):
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class ProxyPoolModel(BaseModel):
+    """Proxy pool for multi-IP war requests."""
+    __tablename__ = "proxy_pool"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    proxy_url: Mapped[str] = mapped_column(String(512), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="unused")  # unused | used
+    owner_chat_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    used_by_hero: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    used_by_war_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    used_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
 
 class WarHistoryModel(BaseModel):
     __tablename__ = "war_history"

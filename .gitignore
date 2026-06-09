@@ -1,26 +1,18 @@
-# Python
+# KeWarMiBot
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/backups/
+data/test_*
 __pycache__/
 *.pyc
-*.pyo
-.venv/
+.pytest_cache/
 *.egg-info/
 dist/
-
-# Data
-data/*.db
-data/*.log
-
-# Environment
-.env
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-.gh-token
+build/
+venv/
+.env.local
+.env.production
+*.bak

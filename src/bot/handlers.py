@@ -32,7 +32,7 @@ from src.cookie_service import (
 from src.war_config_service import load_config, save_config, MAX_COOKIES_PER_WAR, recommended_hero
 from src.engine.api import measure_latency
 from src.engine.war import run_war_sync, WarConfig, WarResultReport, get_next_beijing_midnight_ms
-from src.scheduler_jobs import _get_latency_stats, _run_scheduled_war
+from src.scheduler_jobs import scheduler as _sj_scheduler, _notifier
 
 logger = logging.getLogger(__name__)
 
@@ -360,8 +360,29 @@ async def menu_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     # Latency live
     lat = measure_latency(samples=3)
 
-    # Latency stats dari DB
-    stats = await _get_latency_stats(_owner(update))
+    # Latency stats dari DB (inline, no import from scheduler)
+    import datetime as _dt
+    from sqlalchemy import select as _sel
+    cutoff = _dt.datetime.utcnow() - _dt.timedelta(hours=6)
+    async with AsyncSessionLocal() as sess:
+        r = await sess.execute(
+            _sel(LatencyLogModel)
+            .where(LatencyLogModel.timestamp >= cutoff)
+            .order_by(LatencyLogModel.timestamp.desc())
+            .limit(72)
+        )
+        logs = list(r.scalars().all())
+    if not logs:
+        stats = {"min": None, "max": None, "avg": None, "latest": None, "samples": []}
+    else:
+        values = [l.latency_ms for l in logs]
+        stats = {
+            "min": min(values),
+            "max": max(values),
+            "avg": sum(values) // len(values),
+            "latest": values[0],
+            "samples": [{"ts": l.timestamp.strftime("%H:%M"), "ms": l.latency_ms} for l in reversed(logs)],
+        }
 
     # Countdown
     target = get_next_beijing_midnight_ms()

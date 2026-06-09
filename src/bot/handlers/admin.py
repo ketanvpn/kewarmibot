@@ -12,39 +12,7 @@ async def menu_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await query.edit_message_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
         return
 
-    async with AsyncSessionLocal() as session:
-        from src.user_service import user_count as uc
-        from src.package_service import revenue_today as rt
-        from sqlalchemy import select, func
-        from src.db import OrderModel
-        total_users = await uc(session)
-        revenue = await rt(session)
-        r = await session.execute(select(func.count()).select_from(OrderModel).where(OrderModel.status == "paid"))
-        paid = r.scalar() or 0
-        r = await session.execute(select(func.count()).select_from(OrderModel).where(OrderModel.status == "waiting_payment"))
-        waiting = r.scalar() or 0
-
-    text = (
-        f"🛡️ <b>Admin Dashboard</b>\n"
-        f"{SEP}\n"
-        f"👥 User: <b>{total_users}</b>     ·     💰 Hari Ini: <b>Rp {revenue:,}</b>\n"
-        f"📦 Order Paid: <b>{paid}</b>     ·     ⏳ Waiting: <b>{waiting}</b>\n"
-        f"{SEP}\n"
-        f"<b>Panel Admin:</b>"
-    )
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("👥 Kelola User", callback_data="admin:users"),
-         InlineKeyboardButton("📦 Kelola Paket", callback_data="admin:packages")],
-        [InlineKeyboardButton("💳 Payment Settings", callback_data="admin:settings"),
-         InlineKeyboardButton("📊 Revenue", callback_data="admin:revenue")],
-        [InlineKeyboardButton("🔌 Pool Proxy", callback_data="pool:menu"),
-         InlineKeyboardButton("⚙️ War Config", callback_data="menu:config")],
-        [InlineKeyboardButton("⚔️ War Debug", callback_data="menu:war_debug"),
-         InlineKeyboardButton("📊 Status", callback_data="menu:status")],
-        [InlineKeyboardButton("⏰ Auto-War", callback_data="menu:autowar"),
-         InlineKeyboardButton("📜 Riwayat", callback_data="menu:history")],
-        [InlineKeyboardButton("« Menu Utama", callback_data="menu:main")],
-    ])
+    text, kb = await admin_dashboard_text()
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
 

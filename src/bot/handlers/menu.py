@@ -43,24 +43,13 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ─── /admin — Admin Dashboard (admin only) ─────────────
 
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/admin — shows admin dashboard."""
+    """Admin panel — /admin command. Shared dashboard from _common."""
     oid = owner_id(update)
     if oid not in {str(x) for x in settings.admin_ids} and oid != "690744680":
         await update.message.reply_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
         return
-
-    # Reuse same dashboard as menu_admin callback
-    from src.bot.handlers.admin import menu_admin
-    # Fake a callback_query from this message
-    class FakeQ:
-        data = "menu:admin"
-        def __init__(self, msg): self.message = msg
-        async def answer(self, *a, **kw): pass
-        async def edit_message_text(self, text, **kw):
-            return await self.message.reply_text(text, **kw)
-    update.callback_query = FakeQ(update.message)
-    await menu_admin(update, context)
-
+    text, kb = await admin_dashboard_text()
+    await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
 # ─── Main Menu — Public User Panel ─────────────────────
 

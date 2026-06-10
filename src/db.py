@@ -32,6 +32,7 @@ class CookieModel(BaseModel):
         default=datetime.datetime.utcnow,
         onupdate=datetime.datetime.utcnow,
     )
+    has_won: Mapped[bool] = mapped_column(Boolean, default=False)  # already won a ticket, locked from war
 
     def __repr__(self) -> str:
         return f"Cookie(id={self.id}, name={self.name})"

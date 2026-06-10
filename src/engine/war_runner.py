@@ -79,6 +79,19 @@ async def execute_war(
             await deduct_balance(session, user.id, cost)
             logger.info(f"Deducted {cost} tiket from {user.first_name or user_tg_id}")
 
+        # Skip won cookies from selected_ids — they already earned a ticket
+        filtered_ids = []
+        won_ids_skip = []
+        for cid in selected_ids:
+            cookie = next((c for c in cookies if c.id == cid), None)
+            if cookie and cookie.has_won:
+                won_ids_skip.append(cid)
+            else:
+                filtered_ids.append(cid)
+        if won_ids_skip:
+            logger.info(f"execute_war: skipping {len(won_ids_skip)} won cookie(s)")
+        selected_ids = filtered_ids
+
         # Load cookie tokens
         cookie_list: list[tuple[str, str]] = []
         for cid in selected_ids:
@@ -89,6 +102,7 @@ async def execute_war(
                         select(CookieModel).where(
                             CookieModel.id == cid,
                             CookieModel.owner_chat_id == user_tg_id,
+                            CookieModel.has_won == False,
                         )
                     )
                     c = r.scalar_one_or_none()
@@ -149,6 +163,41 @@ async def execute_war(
                 await add_tickets(session, user.id, report.success_count)
             except Exception as e:
                 logger.error(f"Ticket award failed: {e}")
+
+            # Mark winning cookies + remove from config
+            from sqlalchemy import select as _sel, update as _upd
+            from src.db import CookieModel
+            winning_names = set(
+                r.cookie_name for r in report.hero_results if r.success
+            )
+            for cname in winning_names:
+                await session.execute(
+                    _upd(CookieModel)
+                    .where(CookieModel.owner_chat_id == user_tg_id, CookieModel.name == cname)
+                    .values(has_won=True)
+                )
+            await session.commit()
+            logger.info(f"Marked {len(winning_names)} cookie(s) as won for {user.first_name or user_tg_id}")
+
+            # Remove won cookies from active config
+            cfg_model = await get_active_config(session, user_tg_id)
+            if cfg_model:
+                selected = json.loads(cfg_model.cookie_ids) if cfg_model.cookie_ids else []
+                won_ids: set[int] = set()
+                for cname in winning_names:
+                    r2 = await session.execute(
+                        _sel(CookieModel.id).where(
+                            CookieModel.owner_chat_id == user_tg_id,
+                            CookieModel.name == cname,
+                        )
+                    )
+                    cid = r2.scalar_one_or_none()
+                    if cid:
+                        won_ids.add(cid)
+                new_ids = [cid for cid in selected if cid not in won_ids]
+                cfg_model.cookie_ids = json.dumps(new_ids)
+                await session.commit()
+                logger.info(f"Removed {len(won_ids)} won cookie(s) from config, remaining: {len(new_ids)}")
 
         # Final balance
         user_final = await get_user_by_id(session, user.id)

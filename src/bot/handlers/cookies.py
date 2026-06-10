@@ -24,15 +24,24 @@ async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     for c in cookies:
         emoji, status = status_label(c)
         in_war = c.id in selected_ids
-        war_toggle = "✅ Ikut War" if in_war else "⬜ Ikut War"
-        lines.append(f"{emoji} <b>{c.name}</b> — {status}")
+        won_badge = "🏆 " if c.has_won else ""
+        if c.has_won:
+            war_toggle = "🏆 Sudah Menang"
+        else:
+            war_toggle = "✅ Ikut War" if in_war else "⬜ Ikut War"
+        lines.append(f"{emoji} {won_badge}<b>{c.name}</b> — {status}")
         kb_rows.append([
-            InlineKeyboardButton(f"{c.name} ({war_toggle})", callback_data=f"cookie:detail:{c.id}"),
+            InlineKeyboardButton(f"{won_badge}{c.name} ({war_toggle})", callback_data=f"cookie:detail:{c.id}"),
             InlineKeyboardButton("🗑", callback_data=f"cookie:delete_confirm:{c.id}"),
         ])
-        kb_rows.append([
-            InlineKeyboardButton("❌ Keluarkan dari War" if in_war else "✅ Masukkan ke War", callback_data=f"cookie:toggle_war:{c.id}"),
-        ])
+        if c.has_won:
+            kb_rows.append([
+                InlineKeyboardButton("📢 Hapus cookie ini — sudah menang", callback_data=f"cookie:delete_confirm:{c.id}"),
+            ])
+        else:
+            kb_rows.append([
+                InlineKeyboardButton("❌ Keluarkan dari War" if in_war else "✅ Masukkan ke War", callback_data=f"cookie:toggle_war:{c.id}"),
+            ])
     kb_rows.append([InlineKeyboardButton("🔄 Refresh Semua Cookie", callback_data="cookie:refresh_all")])
     kb_rows.append([InlineKeyboardButton("➕ Tambah Cookie", callback_data="cookie:add")])
     kb_rows.append([back_button(update, context)])
@@ -119,6 +128,14 @@ async def cookie_toggle_war(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     query = update.callback_query
     await query.answer()
     cid = int(query.data.split(":")[-1])
+    
+    # Check if cookie already won
+    cookies = await cookies_list(update)
+    cookie = next((c for c in cookies if c.id == cid), None)
+    if cookie and cookie.has_won:
+        await query.answer("🏆 Cookie ini sudah dapat tiket! Hapus dari daftar.", show_alert=True)
+        return
+
     cfg = await cfg_dict(update)
     selected_ids = list(cfg.get("cookie_ids", []))
 

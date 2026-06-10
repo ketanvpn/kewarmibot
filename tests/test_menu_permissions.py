@@ -62,6 +62,42 @@ async def test_non_admin_callback_cannot_enter_admin_or_pool_routes(callback_dat
 
 
 @pytest.mark.asyncio
+async def test_non_admin_history_only_sees_own_data():
+    """
+    Regression: menu_history must filter by user_id, not return all users' war history.
+    """
+    from src.bot.handlers.info import menu_history
+    from unittest.mock import AsyncMock, patch, MagicMock
+
+    update = MagicMock()
+    update.callback_query = MagicMock()
+    update.callback_query.data = "menu:history"
+    update.callback_query.answer = AsyncMock()
+    update.callback_query.edit_message_text = AsyncMock()
+    update.effective_chat.id = 123456
+    context = MagicMock()
+    context.user_data = {}
+
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = []
+    mock_result = MagicMock()
+    mock_result.scalars.return_value = mock_scalars
+
+    mock_session = AsyncMock()
+    mock_session.execute.return_value = mock_result
+    mock_session_ctx = AsyncMock()
+    mock_session_ctx.__aenter__.return_value = mock_session
+
+    with patch("src.bot.handlers.info.AsyncSessionLocal", return_value=mock_session_ctx):
+        with patch("src.bot.handlers.info.get_user", new_callable=AsyncMock) as mock_get_user:
+            mock_get_user.return_value = MagicMock(id=1)
+            await menu_history(update, context)
+
+    call_args = mock_session.execute.call_args
+    compiled = str(call_args[0][0].compile(compile_kwargs={"literal_binds": True}))
+    assert "user_id" in compiled, f"Expected user_id filter, got: {compiled}"
+
+@pytest.mark.asyncio
 async def test_non_admin_text_input_clears_admin_pending_state():
     from src.bot.handlers.admin import text_input_handler
 

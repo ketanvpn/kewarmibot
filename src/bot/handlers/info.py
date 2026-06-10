@@ -91,12 +91,23 @@ async def menu_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     query = update.callback_query
     await query.answer()
 
+    oid = owner_id(update)
     async with AsyncSessionLocal() as session:
         from src.db import WarHistoryModel
         from sqlalchemy import select
-        r = await session.execute(
-            select(WarHistoryModel).order_by(WarHistoryModel.started_at.desc()).limit(15)
-        )
+        user = await get_user(session, oid)
+        uid = user.id if user else None
+        if uid is None:
+            r = await session.execute(
+                select(WarHistoryModel).where(WarHistoryModel.id < 0)
+            )
+        else:
+            r = await session.execute(
+                select(WarHistoryModel)
+                .where(WarHistoryModel.user_id == uid)
+                .order_by(WarHistoryModel.started_at.desc())
+                .limit(15)
+            )
         history = list(r.scalars().all())
 
     if not history:
@@ -128,17 +139,28 @@ async def menu_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     from collections import defaultdict
     cookie_stats = defaultdict(lambda: {"success": 0, "fail": 0})
 
+    oid = owner_id(update)
     async with AsyncSessionLocal() as session:
         from src.db import WarHistoryModel, CookieModel
         from sqlalchemy import select
-        r = await session.execute(
-            select(WarHistoryModel).order_by(WarHistoryModel.started_at.desc()).limit(200)
-        )
+        user = await get_user(session, oid)
+        uid = user.id if user else None
+        if uid is None:
+            r = await session.execute(
+                select(WarHistoryModel).where(WarHistoryModel.id < 0)
+            )
+        else:
+            r = await session.execute(
+                select(WarHistoryModel)
+                .where(WarHistoryModel.user_id == uid)
+                .order_by(WarHistoryModel.started_at.desc())
+                .limit(200)
+            )
         history = list(r.scalars().all())
 
         # Fetch cookie names for lookup
         cookies_result = await session.execute(
-            select(CookieModel).where(CookieModel.owner_chat_id == owner_id(update))
+            select(CookieModel).where(CookieModel.owner_chat_id == oid)
         )
         cookies = {c.id: c.name for c in cookies_result.scalars().all()}
 

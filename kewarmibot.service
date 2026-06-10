@@ -7,12 +7,19 @@ Type=simple
 User=root
 WorkingDirectory=/root/.openclaw/workspace/projects/mchrbl-bot
 EnvironmentFile=/root/.openclaw/workspace/projects/mchrbl-bot/.env
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/bin/python3 /root/.openclaw/workspace/projects/mchrbl-bot/main.py
-WorkingDirectory=/root/.openclaw/workspace/projects/mchrbl-bot
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/root/.openclaw/workspace/projects/mchrbl-bot/data
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 [Install]
 WantedBy=multi-user.target

@@ -16,3 +16,4 @@ venv/
 .env.local
 .env.production
 *.bak
+.gh-token

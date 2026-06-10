@@ -5,13 +5,18 @@ from src.bot.handlers._common import *
 
 async def pool_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle proxy pool text input or message."""
+    if not is_admin_update(update):
+        if update.callback_query:
+            await update.callback_query.edit_message_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
+        return
+
     # Jika ini callback → route ke _pool_router
     # Jika ini text input → parse proxy URL
     if update.callback_query:
         return await _pool_router(update, context)
     elif update.message and update.message.text:
         text = update.message.text.strip()
-        lines = [l.strip() for l in text.split("\n") if l.strip() and not l.startswith("/")]
+        lines = [line.strip() for line in text.split("\n") if line.strip() and not line.startswith("/")]
         if not lines:
             await update.message.reply_text("❌ Kirim proxy dlm format:\n<code>user:pass:host:port</code>", parse_mode=ParseMode.HTML)
             return
@@ -30,12 +35,13 @@ async def _pool_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     oid = owner_id(update)
 
     if data == "pool:menu":
+        context.user_data.setdefault("_nav_admin", True)
         async with AsyncSessionLocal() as s:
             stats = await pool_stats(s, oid)
         text = (
             f"🔌 <b>Pool Proxy</b>\n"
             f"{'─' * 28}\n"
-            f"🟢 Tersedia: <b>{stats['available']}</b>\n"
+            f"🟢 Tersedia: <b>{stats['unused']}</b>\n"
             f"🔴 Terpakai: <b>{stats['used']}</b>\n"
             f"📊 Total: <b>{stats['total']}</b>\n"
             f"{'─' * 28}\n"
@@ -55,4 +61,3 @@ async def _pool_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await _pool_router(update, context)
     else:
         await query.edit_message_text("❌ Unknown pool action.")
-

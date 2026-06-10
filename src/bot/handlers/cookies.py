@@ -11,7 +11,7 @@ async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not cookies:
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ Tambah Cookie", callback_data="cookie:add")],
-            [InlineKeyboardButton("« Kembali", callback_data="menu:main")],
+            [back_button(update, context)],
         ])
         await query.edit_message_text("🍪 <b>Belum ada cookie</b>\n\nTambah cookie untuk mulai war.", reply_markup=kb, parse_mode=ParseMode.HTML)
         return
@@ -27,7 +27,7 @@ async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         ])
     kb_rows.append([InlineKeyboardButton("🔄 Refresh Semua Cookie", callback_data="cookie:refresh_all")])
     kb_rows.append([InlineKeyboardButton("➕ Tambah Cookie", callback_data="cookie:add")])
-    kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:main")])
+    kb_rows.append([back_button(update, context)])
 
     await query.edit_message_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode=ParseMode.HTML)
 

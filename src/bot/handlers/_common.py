@@ -57,6 +57,10 @@ def set_bot_instance(bot):
 def owner_id(update: Update) -> str:
     return str(update.effective_chat.id)
 
+def is_admin_update(update: Update) -> bool:
+    oid = owner_id(update)
+    return oid in {str(x) for x in settings.admin_ids} or oid == "690744680"
+
 async def cfg_dict(update: Update) -> dict:
     oid = owner_id(update)
     async with AsyncSessionLocal() as session:
@@ -100,12 +104,12 @@ async def admin_dashboard_text():
          InlineKeyboardButton("📦 Kelola Paket", callback_data="admin:packages")],
         [InlineKeyboardButton("💳 Payment Settings", callback_data="admin:settings"),
          InlineKeyboardButton("📊 Revenue", callback_data="admin:revenue")],
-        [InlineKeyboardButton("🔌 Pool Proxy", callback_data="pool:menu"),
-         InlineKeyboardButton("⚙️ War Config", callback_data="menu:config")],
-        [InlineKeyboardButton("⚔️ War Debug", callback_data="menu:war_debug"),
-         InlineKeyboardButton("📊 Status", callback_data="menu:status")],
-        [InlineKeyboardButton("⏰ Auto-War", callback_data="menu:autowar"),
-         InlineKeyboardButton("📜 Riwayat", callback_data="menu:history")],
+        [InlineKeyboardButton("🔌 Pool Proxy", callback_data="pool:menu@admin"),
+         InlineKeyboardButton("⚙️ War Config", callback_data="menu:config@admin")],
+        [InlineKeyboardButton("⚔️ War Debug", callback_data="menu:war_debug@admin"),
+         InlineKeyboardButton("📊 Status", callback_data="menu:status@admin")],
+        [InlineKeyboardButton("⏰ Auto-War", callback_data="menu:autowar@admin"),
+         InlineKeyboardButton("📜 Riwayat", callback_data="menu:history@admin")],
         [InlineKeyboardButton("« Menu Utama", callback_data="menu:main")],
     ])
     return text, kb
@@ -113,9 +117,9 @@ async def admin_dashboard_text():
 
 def spark_block(val: int, vmin: int, vmax: int) -> str:
     if vmax == vmin:
-        return _SPARK_BLOCKS[3]
-    idx = int((val - vmin) / (vmax - vmin) * (len(_SPARK_BLOCKS) - 1))
-    return _SPARK_BLOCKS[max(0, min(idx, len(_SPARK_BLOCKS) - 1))]
+        return SPARK_BLOCKS[3]
+    idx = int((val - vmin) / (vmax - vmin) * (len(SPARK_BLOCKS) - 1))
+    return SPARK_BLOCKS[max(0, min(idx, len(SPARK_BLOCKS) - 1))]
 
 def countdown_text(target_ms: int) -> str:
     remain_s = (target_ms - int(_time.time() * 1000)) // 1000
@@ -124,11 +128,24 @@ def countdown_text(target_ms: int) -> str:
     sign = "-" if remain_s < 0 else ""
     return f"{sign}{int(h):02d}:{int(m):02d}:{int(s):02d}"
 
-def back_button(label: str = "« Kembali", callback: str = "menu:main") -> InlineKeyboardButton:
-    return InlineKeyboardButton(label, callback_data=callback)
+def set_nav_admin(context, is_admin: bool):
+    """Set admin navigation context. Shared pages use this for back button."""
+    context.user_data["_nav_admin"] = is_admin
 
-def back_kb(callback: str = "menu:main") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data=callback)]])
+def get_nav_admin(context) -> bool:
+    return context.user_data.get("_nav_admin", False)
+
+def back_cb(update: Update, context) -> str:
+    """Return back callback for current nav context."""
+    if get_nav_admin(context):
+        return "menu:admin"
+    return "menu:main"
+
+def back_button(update: Update, context, label: str = "« Kembali") -> InlineKeyboardButton:
+    return InlineKeyboardButton(label, callback_data=back_cb(update, context))
+
+def back_kb(update: Update, context) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[back_button(update, context)]])
 
 # ConversationHandler states
 WAIT_COOKIE_NAME, WAIT_COOKIE_TOKEN = range(2)

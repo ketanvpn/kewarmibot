@@ -10,7 +10,7 @@ from src.bot.handlers.cookies import (
 )
 from src.bot.handlers.info import menu_status, menu_history, menu_stats, menu_profile
 from src.bot.handlers.config import menu_config, config_set
-from src.bot.handlers.war import war_debug, menu_autowar, autowar_toggle, autowar_run_now
+from src.bot.handlers.war import war_debug, menu_autowar, autowar_toggle
 from src.bot.handlers.payment import menu_beli, menu_beli_confirm
 from src.bot.handlers.admin import (
     menu_admin, admin_users_list, admin_user_detail, admin_user_topup_prompt,
@@ -27,6 +27,22 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     await query.answer()
     data = query.data
+
+    # Strip @admin suffix — sets admin nav context so "Kembali" goes to menu:admin
+    admin_context_requested = data.endswith("@admin")
+    if admin_context_requested and not is_admin_update(update):
+        await query.edit_message_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
+        return
+
+    if admin_context_requested:
+        data = data[:-6]
+        context.user_data["_nav_admin"] = True
+    else:
+        context.user_data.pop("_nav_admin", None)
+
+    if (data.startswith("admin:") or data.startswith("pool:")) and not is_admin_update(update):
+        await query.edit_message_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
+        return
 
     static_routes = {
         "menu:main": main_menu,

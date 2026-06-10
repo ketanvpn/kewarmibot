@@ -7,11 +7,11 @@ async def menu_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     """Callback menu:admin — show admin dashboard inline."""
     query = update.callback_query
     await query.answer()
-    oid = owner_id(update)
-    if oid not in {str(x) for x in settings.admin_ids} and oid != "690744680":
+    if not is_admin_update(update):
         await query.edit_message_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
         return
 
+    set_nav_admin(context, True)  # Ensure admin nav context
     text, kb = await admin_dashboard_text()
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
@@ -222,7 +222,10 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     async with AsyncSessionLocal() as session:
         cfg = await get_payment_config(session)
-    mask = lambda v: v[:8] + "•••" if v and len(v) > 10 else (v or "(kosong)")
+
+    def mask(value: str | None) -> str:
+        return value[:8] + "•••" if value and len(value) > 10 else (value or "(kosong)")
+
     text = (
         f"💳 <b>Payment Settings</b>\n"
         f"{SEP}\n"
@@ -298,6 +301,11 @@ async def admin_revenue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def text_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     key = context.user_data.get("editing_setting")
     pkg = context.user_data.get("editing_pkg")
+    if not is_admin_update(update):
+        context.user_data.pop("editing_setting", None)
+        context.user_data.pop("editing_pkg", None)
+        return
+
     if key:
         await settings_edit_save(update, context)
     elif pkg:

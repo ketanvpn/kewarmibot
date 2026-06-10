@@ -7,6 +7,9 @@ async def menu_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     await query.answer()
 
+    # Propagate @admin suffix on refresh
+    nav_suffix = "@admin" if context.user_data.get("_nav_admin") else ""
+
     # Latency live
     lat = measure_latency(samples=3)
 
@@ -65,8 +68,8 @@ async def menu_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         lines.append(f"{emoji} <b>{c.name}</b>: {status}")
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Refresh", callback_data="menu:status"),
-         InlineKeyboardButton("« Kembali", callback_data="menu:main")],
+        [InlineKeyboardButton("🔄 Refresh", callback_data=f"menu:status{nav_suffix}"),
+         back_button(update, context)],
     ])
     await query.edit_message_text("\n".join(lines), reply_markup=kb, parse_mode=ParseMode.HTML)
 
@@ -97,7 +100,7 @@ async def menu_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         history = list(r.scalars().all())
 
     if not history:
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:main")]])
+        kb = InlineKeyboardMarkup([[back_button(update, context)]])
         await query.edit_message_text("📜 <b>Belum ada riwayat war.</b>", reply_markup=kb, parse_mode=ParseMode.HTML)
         return
 
@@ -110,7 +113,7 @@ async def menu_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Statistik Cookie", callback_data="menu:stats")],
-        [InlineKeyboardButton("« Kembali", callback_data="menu:main")],
+        [back_button(update, context)],
     ])
     await query.edit_message_text("\n".join(lines), reply_markup=kb, parse_mode=ParseMode.HTML)
 
@@ -227,6 +230,6 @@ async def menu_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎫 Beli Tiket War", callback_data="menu:beli")],
-        [InlineKeyboardButton("« Kembali", callback_data="menu:main")],
+        [back_button(update, context)],
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)

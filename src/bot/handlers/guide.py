@@ -52,7 +52,7 @@ async def menu_guide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("💬 Chat Support", callback_data="menu:support")],
-        [InlineKeyboardButton("« Kembali", callback_data="menu:main")],
+        [back_button(update, context)],
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
@@ -93,7 +93,7 @@ async def menu_support(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         [InlineKeyboardButton("💬 WhatsApp", url="https://wa.me/6281234567890")],
         [InlineKeyboardButton("🆔 Telegram Group", url="https://t.me/kewarmibot_community")],
         [InlineKeyboardButton("📧 Email", callback_data="menu:email_copy")],
-        [InlineKeyboardButton("« Kembali", callback_data="menu:main")],
+        [back_button(update, context)],
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 

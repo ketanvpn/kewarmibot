@@ -6,10 +6,9 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 import asyncio
 
-from src.config import settings
 from src.db import AsyncSessionLocal
 from src.package_service import mark_order_paid, get_order
-from src.user_service import add_balance
+from src.user_service import get_user_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +46,11 @@ async def webhook_payment(request: Request):
         signature = request.headers.get("X-Signature", "")
 
         # Verify signature
-        from src.payment_service import verify_webhook_signature
+        from src.payment_service import get_runtime_payment_config, verify_webhook_signature
 
-        if not verify_webhook_signature(body.decode(), signature):
+        payment_cfg = await get_runtime_payment_config()
+        webhook_secret = payment_cfg.get("webhook_secret") or ""
+        if not verify_webhook_signature(body.decode(), signature, webhook_secret):
             logger.warning(f"Invalid webhook signature: {signature[:20]}...")
             raise HTTPException(status_code=401, detail="Invalid signature")
 
@@ -68,16 +69,20 @@ async def webhook_payment(request: Request):
                 return JSONResponse({"status": "error", "message": "Order not found"}, status_code=404)
 
             if status == "paid":
-                await mark_order_paid(session, order_ref)
-                # Add balance
-                await add_balance(session, order.user_id, order.war_count)
+                credited = await mark_order_paid(session, order_ref)
+                if not credited:
+                    logger.info(f"Order {order_ref} already paid — duplicate webhook ignored")
+                    return {"status": "ok", "duplicate": True}
+
                 logger.info(f"Order {order_ref} paid → user {order.user_id} +{order.war_count} balance")
 
                 # Notify user
                 if _bot_notifier:
                     from src.bot.notify import format_payment_success
                     pkg_name = f"Order #{order.order_ref}"
-                    text = format_payment_success(pkg_name, amount, order.war_count, order.war_count)
+                    user = await get_user_by_id(session, order.user_id)
+                    new_balance = user.balance_war if user else order.war_count
+                    text = format_payment_success(pkg_name, amount, order.war_count, new_balance)
                     try:
                         await _bot_notifier(str(order.user_id), text)
                     except Exception as e:

@@ -21,7 +21,7 @@ async def menu_beli(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"{p.name} — Rp {p.price_idr:,}",
             callback_data=f"beli:pkg:{p.id}"
         )])
-    kb.append([InlineKeyboardButton("« Kembali", callback_data="menu:main")])
+    kb.append([back_button(update, context)])
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.HTML)
 

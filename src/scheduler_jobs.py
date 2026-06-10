@@ -252,7 +252,16 @@ def start_scheduler(get_notifier: Callable | None = None):
         dest = os.path.join(backup_dir, f"kewarmibot-{ts}.db")
 
         try:
-            shutil.copy2(db_path, dest)
+            import sqlite3
+
+            with sqlite3.connect(db_path) as src, sqlite3.connect(dest) as dst:
+                src.backup(dst)
+
+            with sqlite3.connect(dest) as check:
+                result = check.execute("PRAGMA quick_check").fetchone()
+                if not result or result[0] != "ok":
+                    raise RuntimeError(f"backup integrity check failed: {result}")
+
             logger.info(f"DB backup created: {dest}")
 
             pattern = os.path.join(backup_dir, "kewarmibot-*.db")

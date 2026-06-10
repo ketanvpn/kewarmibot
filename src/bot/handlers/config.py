@@ -56,7 +56,7 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         label = f"{'✅' if in_war else ('🔒' if disabled else '⬜')} {c.name}"
         kb_rows.append([InlineKeyboardButton(label, callback_data=f"cfg:toggle_cookie:{c.id}")])
 
-    kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:main")])
+    kb_rows.append([back_button(update, context)])
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode=ParseMode.HTML)
 
 

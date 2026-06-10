@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 async def list_packages(session: AsyncSession, active_only: bool = True) -> list[PackageModel]:
     """List packages."""
     if active_only:
-        r = await session.execute(select(PackageModel).where(PackageModel.is_active == True))
+        r = await session.execute(select(PackageModel).where(PackageModel.is_active.is_(True)))
     else:
         r = await session.execute(select(PackageModel))
     return r.scalars().all()
@@ -57,7 +57,7 @@ async def get_order(session: AsyncSession, order_ref: str) -> OrderModel | None:
     return r.scalar_one_or_none()
 
 async def mark_order_paid(session: AsyncSession, order_ref: str, user_id: int | None = None) -> bool:
-    """Mark order paid + add balance to user."""
+    """Mark order paid. Returns False when missing or already paid."""
     if user_id is not None:
         r = await session.execute(select(OrderModel).where(OrderModel.order_ref == order_ref, OrderModel.user_id == user_id))
     else:
@@ -65,11 +65,13 @@ async def mark_order_paid(session: AsyncSession, order_ref: str, user_id: int | 
     order = r.scalar_one_or_none()
     if not order:
         return False
+    if order.status == "paid":
+        return False
     
     order.status = "paid"
     order.paid_at = datetime.datetime.utcnow()
-    
-    user = await session.get(UserModel, user_id)
+
+    user = await session.get(UserModel, user_id or order.user_id)
     if user:
         user.balance_war += order.war_count
     
@@ -95,7 +97,6 @@ async def update_package(session: AsyncSession, package_id: int, is_active: bool
 
 async def revenue_today(session: AsyncSession) -> int:
     """Revenue from paid orders today."""
-    now = datetime.datetime.utcnow()
     start = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     r = await session.execute(
         select(func.sum(OrderModel.amount_idr)).where(

@@ -44,10 +44,10 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Admin panel — /admin command. Shared dashboard from _common."""
-    oid = owner_id(update)
-    if oid not in {str(x) for x in settings.admin_ids} and oid != "690744680":
+    if not is_admin_update(update):
         await update.message.reply_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
         return
+    set_nav_admin(context, True)
     text, kb = await admin_dashboard_text()
     await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
@@ -56,6 +56,9 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     oid = owner_id(update)
+
+    # Clear admin nav context — user menu
+    context.user_data.pop("_nav_admin", None)
 
     cfg = await cfg_dict(update)
     cookies = await cookies_list(update)

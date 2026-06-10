@@ -10,8 +10,10 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     from src.engine.war_runner import execute_war
 
+    back = "menu:admin" if context.user_data.get("_nav_admin") else "menu:main"
+
     async def _notify(chat_id: str, msg: str):
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Menu Utama", callback_data="menu:main")]])
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Menu Utama", callback_data=back)]])
         try:
             await query.message.reply_text(msg, reply_markup=kb, parse_mode=ParseMode.HTML)
         except Exception as e:
@@ -19,8 +21,6 @@ async def war_debug(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await query.edit_message_text("⚔️ <b>WAR DEBUG</b>\n\n⏰ War dalam ~20 detik...", parse_mode=ParseMode.HTML)
     await execute_war(oid, debug=True, deduct=True, notify=_notify)
-
-
 
 # ─── Auto-War Toggle ───────────────────────────────────
 
@@ -44,10 +44,9 @@ async def menu_autowar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔴 Matikan" if enabled else "🟢 Aktifkan", callback_data="autowar:toggle")],
-        [InlineKeyboardButton("« Kembali", callback_data="menu:main")],
+        [back_button(update, context)],
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
-
 
 async def autowar_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -57,7 +56,6 @@ async def autowar_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         new_state = await toggle_war_enabled(session, oid)
     await menu_autowar(update, context)
 
-
 async def autowar_run_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Manual trigger real war (not debug)."""
     query = update.callback_query
@@ -65,9 +63,10 @@ async def autowar_run_now(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     oid = owner_id(update)
 
     from src.engine.war_runner import execute_war
+    back = "menu:admin" if context.user_data.get("_nav_admin") else "menu:main"
 
     async def _notify(chat_id: str, msg: str):
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Menu Utama", callback_data="menu:main")]])
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Menu Utama", callback_data=back)]])
         try:
             await query.message.reply_text(msg, reply_markup=kb, parse_mode=ParseMode.HTML)
         except Exception as e:
@@ -75,4 +74,3 @@ async def autowar_run_now(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     await query.edit_message_text("⚔️ <b>WAR DIMULAI</b>\n\nMenunggu hasil...", parse_mode=ParseMode.HTML)
     await execute_war(oid, debug=False, deduct=False, notify=_notify)
-

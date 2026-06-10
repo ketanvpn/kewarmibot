@@ -4,10 +4,8 @@ import logging
 import os
 import asyncio
 import signal
+import re
 
-from telegram import Bot
-
-from src.config import settings
 from src.db import init_db
 from src.bot.handlers import build_app, set_bot_instance
 from src.scheduler_jobs import start_scheduler
@@ -16,6 +14,30 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+
+
+class TelegramTokenRedactor(logging.Filter):
+    """Redact Telegram bot tokens before they reach journald."""
+
+    _token_re = re.compile(r"bot\d{6,}:[A-Za-z0-9_-]+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = self._token_re.sub("bot[REDACTED]", record.msg)
+        if record.args:
+            record.args = tuple(
+                self._token_re.sub("bot[REDACTED]", arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        return True
+
+
+for handler in logging.getLogger().handlers:
+    handler.addFilter(TelegramTokenRedactor())
+
+for noisy_logger in ("httpx", "httpcore"):
+    logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 

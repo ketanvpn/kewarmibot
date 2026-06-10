@@ -53,10 +53,22 @@ async def _pool_router(update: Update, context: ContextTypes.DEFAULT_TYPE, data:
             f"<code>user:pass:host:port</code>"
         )
         kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ Tambah Proxy", callback_data="pool:add")],
             [InlineKeyboardButton("🗑️ Hapus Semua", callback_data="pool:clear")],
             [InlineKeyboardButton("« Kembali", callback_data="menu:admin")],
         ])
         await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+    elif data == "pool:add":
+        context.user_data["_input_mode"] = "pool_add"
+        await query.edit_message_text(
+            "➕ <b>Tambah Proxy</b>\n\n"
+            "Kirim proxy dalam format (satu per baris):\n"
+            "<code>user:pass:host:port</code>\n\n"
+            "Contoh:\n"
+            "<code>admin:12345:192.168.1.1:8080\n"
+            "user2:pass2:proxy.example.com:3128</code>",
+            parse_mode=ParseMode.HTML
+        )
     elif data == "pool:clear":
         async with AsyncSessionLocal() as s:
             deleted = await pool_clear_all(s, oid)

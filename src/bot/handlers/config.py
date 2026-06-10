@@ -7,6 +7,11 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     await query.answer()
 
+    # Admin-only guard
+    if not is_admin_update(update):
+        await query.edit_message_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
+        return
+
     cfg = await cfg_dict(update)
     cookies = await cookies_list(update)
     selected_ids = cfg.get("cookie_ids", [])
@@ -66,6 +71,11 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await query.answer()
     data = query.data.split(":")
     field = data[1] if len(data) > 1 else ""
+
+    # Admin-only guard
+    if not is_admin_update(update):
+        await query.edit_message_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
+        return
 
     cfg = await cfg_dict(update)
     selected_ids = cfg.get("cookie_ids", [])

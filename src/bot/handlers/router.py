@@ -6,7 +6,7 @@ from src.bot.handlers.menu import start, admin_command, cmd_menu, main_menu
 from src.bot.handlers.cookies import (
     cookie_add_start, cookie_add_name, cookie_add_token, cookie_add_cancel,
     cookie_detail, cookie_refresh, cookie_refresh_all,
-    cookie_delete_confirm, cookie_delete, menu_cookies,
+    cookie_delete_confirm, cookie_delete, menu_cookies, cookie_toggle_war,
 )
 from src.bot.handlers.info import menu_status, menu_history, menu_stats, menu_profile
 from src.bot.handlers.config import menu_config, config_set
@@ -73,6 +73,8 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await cookie_delete_confirm(update, context)
     elif data.startswith("cookie:delete:"):
         await cookie_delete(update, context)
+    elif data.startswith("cookie:toggle_war:"):
+        await cookie_toggle_war(update, context)
     elif data.startswith("cookie:add"):
         await cookie_add_start(update, context)
     elif data.startswith("cfg:"):

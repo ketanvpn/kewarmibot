@@ -1,5 +1,6 @@
 """KeWarMiBot — Cookie CRUD & ConversationHandler"""
 from src.bot.handlers._common import *
+from src.bot.handlers.menu import main_menu
 
 # ─── Cookie Management ─────────────────────────────────
 
@@ -7,6 +8,8 @@ async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     query = update.callback_query
     await query.answer()
     cookies = await cookies_list(update)
+    cfg = await cfg_dict(update)
+    selected_ids = cfg.get("cookie_ids", [])
 
     if not cookies:
         kb = InlineKeyboardMarkup([
@@ -16,14 +19,19 @@ async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await query.edit_message_text("🍪 <b>Belum ada cookie</b>\n\nTambah cookie untuk mulai war.", reply_markup=kb, parse_mode=ParseMode.HTML)
         return
 
-    lines = ["🍪 <b>Kelola Cookies</b>\n"]
+    lines = ["🍪 <b>Kelola Cookie</b>\n"]
     kb_rows = []
     for c in cookies:
         emoji, status = status_label(c)
+        in_war = c.id in selected_ids
+        war_toggle = "✅ Ikut War" if in_war else "⬜ Ikut War"
         lines.append(f"{emoji} <b>{c.name}</b> — {status}")
         kb_rows.append([
-            InlineKeyboardButton(c.name, callback_data=f"cookie:detail:{c.id}"),
+            InlineKeyboardButton(f"{c.name} ({war_toggle})", callback_data=f"cookie:detail:{c.id}"),
             InlineKeyboardButton("🗑", callback_data=f"cookie:delete_confirm:{c.id}"),
+        ])
+        kb_rows.append([
+            InlineKeyboardButton("❌ Keluarkan dari War" if in_war else "✅ Masukkan ke War", callback_data=f"cookie:toggle_war:{c.id}"),
         ])
     kb_rows.append([InlineKeyboardButton("🔄 Refresh Semua Cookie", callback_data="cookie:refresh_all")])
     kb_rows.append([InlineKeyboardButton("➕ Tambah Cookie", callback_data="cookie:add")])
@@ -105,6 +113,36 @@ async def cookie_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
+
+async def cookie_toggle_war(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Toggle cookie in/out of war config."""
+    query = update.callback_query
+    await query.answer()
+    cid = int(query.data.split(":")[-1])
+    cfg = await cfg_dict(update)
+    selected_ids = list(cfg.get("cookie_ids", []))
+
+    if cid in selected_ids:
+        selected_ids.remove(cid)
+        await query.answer("❌ Cookie dikeluarkan dari war", show_alert=False)
+    else:
+        if len(selected_ids) >= MAX_COOKIES_PER_WAR:
+            await query.answer(f"Maksimal {MAX_COOKIES_PER_WAR} cookie per war!", show_alert=True)
+            return
+        selected_ids.append(cid)
+        await query.answer("✅ Cookie dimasukkan ke war", show_alert=False)
+
+    async with AsyncSessionLocal() as session:
+        await save_config(session, owner_id(update),
+                          cookie_ids=selected_ids,
+                          hero_per_cookie=cfg.get("hero_per_cookie", 6),
+                          bracket_factor=cfg["bracket_factor"],
+                          safety_margin=cfg["safety_margin"],
+                          war_hour=cfg.get("war_hour", 0),
+                          war_minute=cfg.get("war_minute", 0),
+                          war_tz=cfg.get("war_tz", "Asia/Shanghai"))
+    query.data = "menu:cookies"
+    await menu_cookies(update, context)
 
 async def cookie_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query

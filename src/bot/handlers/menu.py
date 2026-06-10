@@ -123,6 +123,5 @@ def user_main_kb(update: Update, war_enabled: bool = True) -> InlineKeyboardMark
          InlineKeyboardButton("👤 Profil Saya", callback_data="menu:profile")],
         [InlineKeyboardButton("📖 Panduan", callback_data="menu:guide"),
          InlineKeyboardButton(toggle_label, callback_data="menu:autowar")],
-        [InlineKeyboardButton("📜 Riwayat War", callback_data="menu:history"),
-         InlineKeyboardButton("💬 Support", callback_data="menu:support")],
+        [InlineKeyboardButton("💬 Support", callback_data="menu:support")],
     ])

@@ -13,7 +13,12 @@ async def pool_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Jika ini callback → route ke _pool_router
     # Jika ini text input → parse proxy URL
     if update.callback_query:
-        return await _pool_router(update, context)
+        # Strip @admin suffix kalau ada
+        data = update.callback_query.data
+        if data.endswith("@admin"):
+            data = data[:-6]
+            context.user_data["_nav_admin"] = True
+        return await _pool_router(update, context, data)
     elif update.message and update.message.text:
         text = update.message.text.strip()
         lines = [line.strip() for line in text.split("\n") if line.strip() and not line.startswith("/")]
@@ -28,10 +33,9 @@ async def pool_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             parse_mode=ParseMode.HTML
         )
 
-async def _pool_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def _pool_router(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str) -> None:
     """Proxy pool menu router."""
     query = update.callback_query
-    data = query.data
     oid = owner_id(update)
 
     if data == "pool:menu":

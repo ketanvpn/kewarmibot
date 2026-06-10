@@ -67,7 +67,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user = await get_user(session, oid)
         aw_enabled = user.war_enabled if user else True
         bal = user.balance_war if user else 0
-    aw_text = "🟢 AKTIF" if aw_enabled else "🔴 NONAKTIF"
+    aw_text = "⚔️ Ikut" if aw_enabled else "💤 Lewat"
 
     # Cookie selection status
     selected_ids = cfg.get("cookie_ids", [])
@@ -91,7 +91,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"<i>Xiaomi Bootloader Unlock — Automated War</i>\n"
         f"{SEP}\n"
         f"⏰ Reset: <code>{cd}</code>\n"
-        f"🎫 Tiket: <b>{bal}</b>  ·  ⚡ Auto-War: <b>{aw_text}</b>\n"
+        f"🎫 Tiket: <b>{bal}</b>  ·  ⚔️ War: <b>{aw_text}</b>\n"
     )
     if selected_count > 0:
         text += f"🥊 Siap: <b>{selected_count} cookie</b> × <b>{hero_per} hero</b> = <b>{hero_per * selected_count} tembakan</b>\n"
@@ -115,13 +115,13 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def user_main_kb(update: Update, war_enabled: bool = True) -> InlineKeyboardMarkup:
     """Public user main menu keyboard."""
-    toggle = "🟢" if war_enabled else "🔴"
+    toggle_label = "⚔️ Ikut War" if war_enabled else "💤 Lewat"
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🍪 Cookie Saya", callback_data="menu:cookies"),
          InlineKeyboardButton("🎫 Beli Tiket", callback_data="menu:beli")],
         [InlineKeyboardButton("📜 Riwayat War", callback_data="menu:history"),
          InlineKeyboardButton("👤 Profil Saya", callback_data="menu:profile")],
         [InlineKeyboardButton("📖 Panduan", callback_data="menu:guide"),
-         InlineKeyboardButton(f"⏰ {toggle}", callback_data="menu:autowar")],
+         InlineKeyboardButton(toggle_label, callback_data="menu:autowar")],
         [InlineKeyboardButton("💬 Support", callback_data="menu:support")],
     ])

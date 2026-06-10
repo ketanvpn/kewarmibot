@@ -32,18 +32,17 @@ async def menu_autowar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         user = await get_user(session, oid)
         enabled = user.war_enabled if user else True
 
-    status_text = "✅ AKTIF" if enabled else "❌ NONAKTIF"
+    status_text = "🟢 IKUT WAR" if enabled else "💤 TIDAK IKUT"
     text = (
-        f"⏰ <b>Auto-War Scheduler</b>\n\n"
+        f"⚔️ <b>Partisipasi War</b>\n\n"
         f"Status: {status_text}\n\n"
-        f"Jadwal:\n"
-        f"• 23:55 CST — Notifikasi 5 menit sebelum war\n"
-        f"• 23:57 CST — Auto-war dimulai\n"
-        f"• 00:00 CST — Reset harian Xiaomi\n\n"
-        f"Latency monitor berjalan setiap 15 menit."
+        f"Saat aktif, bot akan menjalankan war otomatis\n"
+        f"pakai cookie kamu tiap malam saat jadwal.\n\n"
+        f"<i>Matikan jika kamu tidak ingin ikut war\n"
+        f"sementara (tiket tetap aman).</i>"
     )
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔴 Matikan" if enabled else "🟢 Aktifkan", callback_data="autowar:toggle")],
+        [InlineKeyboardButton("💤 Tidak Ikut" if enabled else "⚔️ Ikut War", callback_data="autowar:toggle")],
         [back_button(update, context)],
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
@@ -54,6 +53,10 @@ async def autowar_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     oid = owner_id(update)
     async with AsyncSessionLocal() as session:
         new_state = await toggle_war_enabled(session, oid)
+    if new_state:
+        await query.answer("⚔️ Kamu akan ikut war malam ini!", show_alert=True)
+    else:
+        await query.answer("💤 Kamu tidak ikut war malam ini. Tiket tetap aman.", show_alert=True)
     await menu_autowar(update, context)
 
 async def autowar_run_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

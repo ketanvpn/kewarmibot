@@ -119,9 +119,10 @@ def user_main_kb(update: Update, war_enabled: bool = True) -> InlineKeyboardMark
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🍪 Cookie Saya", callback_data="menu:cookies"),
          InlineKeyboardButton("🎫 Beli Tiket", callback_data="menu:beli")],
-        [InlineKeyboardButton("📜 Riwayat War", callback_data="menu:history"),
+        [InlineKeyboardButton("⚙️ Konfigurasi War", callback_data="menu:config"),
          InlineKeyboardButton("👤 Profil Saya", callback_data="menu:profile")],
         [InlineKeyboardButton("📖 Panduan", callback_data="menu:guide"),
          InlineKeyboardButton(toggle_label, callback_data="menu:autowar")],
-        [InlineKeyboardButton("💬 Support", callback_data="menu:support")],
+        [InlineKeyboardButton("📜 Riwayat War", callback_data="menu:history"),
+         InlineKeyboardButton("💬 Support", callback_data="menu:support")],
     ])

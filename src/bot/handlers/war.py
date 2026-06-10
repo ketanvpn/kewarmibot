@@ -28,6 +28,14 @@ async def menu_autowar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     query = update.callback_query
     await query.answer()
     oid = owner_id(update)
+
+    is_admin = get_nav_admin(context)
+
+    if is_admin:
+        await _menu_autowar_admin(update, context)
+        return
+
+    # ─── User: partisipasi personal ───
     async with AsyncSessionLocal() as session:
         user = await get_user(session, oid)
         enabled = user.war_enabled if user else True
@@ -43,6 +51,40 @@ async def menu_autowar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("💤 Tidak Ikut" if enabled else "⚔️ Ikut War", callback_data="autowar:toggle")],
+        [back_button(update, context)],
+    ])
+    await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+
+async def _menu_autowar_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin view — global scheduler status + stats."""
+    query = update.callback_query
+
+    cfg = await cfg_dict(update)
+    wh = cfg.get("war_hour", 0)
+    wm = cfg.get("war_minute", 0)
+    tz = cfg.get("war_tz", "Asia/Shanghai")
+
+    from src.db import UserModel
+    from sqlalchemy import select, func
+    async with AsyncSessionLocal() as session:
+        r = await session.execute(
+            select(func.count()).select_from(UserModel).where(UserModel.war_enabled == True)
+        )
+        active_count = r.scalar() or 0
+        r = await session.execute(
+            select(func.count()).select_from(UserModel)
+        )
+        total = r.scalar() or 0
+
+    text = (
+        f"⏰ <b>Auto-War Scheduler</b>\n\n"
+        f"🕐 Jadwal: <b>{wh:02d}:{wm:02d} {tz}</b>\n"
+        f"👥 Partisipasi: <b>{active_count}/{total}</b> user ikut war\n\n"
+        f"<i>User bisa atur partisipasi personal lewat\n"
+        f"menu ⚔️ Ikut War di dashboard masing-masing.</i>"
+    )
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚙️ Edit Jadwal", callback_data="menu:config@admin")],
         [back_button(update, context)],
     ])
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)

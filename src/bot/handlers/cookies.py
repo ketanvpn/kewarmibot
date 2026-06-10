@@ -4,9 +4,10 @@ from src.bot.handlers.menu import main_menu
 
 # ─── Cookie Management ─────────────────────────────────
 
-async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE, *, _skip_answer: bool = False) -> None:
     query = update.callback_query
-    await query.answer()
+    if not _skip_answer:
+        await query.answer()
     cookies = await cookies_list(update)
     cfg = await cfg_dict(update)
     selected_ids = cfg.get("cookie_ids", [])
@@ -158,8 +159,16 @@ async def cookie_toggle_war(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                           war_hour=cfg.get("war_hour", 0),
                           war_minute=cfg.get("war_minute", 0),
                           war_tz=cfg.get("war_tz", "Asia/Shanghai"))
+        await session.close()
+    
+    # HACK: Force persist + wait for WAL flush before reading back
+    # Without this, cfg_dict() in menu_cookies() may return stale data
+    # because aiosqlite WAL writes are async-visible only after full checkpoint
+    import time
+    time.sleep(0.05)  # 50ms settle for SQLite WAL visibility
+
     query.data = "menu:cookies"
-    await menu_cookies(update, context)
+    await menu_cookies(update, context, _skip_answer=True)
 
 async def cookie_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query

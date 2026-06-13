@@ -1,5 +1,6 @@
-"""KeWarMiBot — Status dashboard, history, stats, profile"""
+"""KeWarMiBot — Status dashboard, history, stats"""
 from src.bot.handlers._common import *
+
 
 # ─── Status Menu ───────────────────────────────────────
 
@@ -7,24 +8,24 @@ async def menu_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     await query.answer()
 
-    # Propagate @admin suffix on refresh
-    nav_suffix = "@admin" if context.user_data.get("_nav_admin") else ""
+    if not is_owner(update):
+        return
 
     # Latency live
     lat = measure_latency(samples=3)
 
-    # Latency stats dari DB (inline, no import from scheduler)
+    # Latency stats dari DB
     import datetime as _dt
-    from sqlalchemy import select as _sel
     cutoff = _dt.datetime.utcnow() - _dt.timedelta(hours=6)
     async with AsyncSessionLocal() as sess:
         r = await sess.execute(
-            _sel(LatencyLogModel)
+            select(LatencyLogModel)
             .where(LatencyLogModel.timestamp >= cutoff)
             .order_by(LatencyLogModel.timestamp.desc())
             .limit(72)
         )
         logs = list(r.scalars().all())
+
     if not logs:
         stats = {"min": None, "max": None, "avg": None, "latest": None, "samples": []}
     else:
@@ -39,12 +40,11 @@ async def menu_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     # Countdown
     target = get_next_beijing_midnight_ms()
-    import time as _time
     remain_s = (target - int(_time.time() * 1000)) // 1000
     h, rem = divmod(abs(remain_s), 3600)
     m, s = divmod(rem, 60)
 
-    cookies = await cookies_list(update)
+    cookies = await cookies_list()
 
     lines = [
         "📊 <b>Status</b>",
@@ -55,8 +55,7 @@ async def menu_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if stats["latest"] is not None:
         lines.append(f"📈 Latency 6h: min {stats['min']}ms / avg {stats['avg']}ms / max {stats['max']}ms")
-        # Sparkline
-        spark = "".join(_spark_block(v["ms"], stats["min"], stats["max"]) for v in stats["samples"][-24:])
+        spark = "".join(spark_block(v["ms"], stats["min"], stats["max"]) for v in stats["samples"][-24:])
         lines.append(f"📉 {spark}")
     else:
         lines.append("📈 Belum ada data latency.")
@@ -65,24 +64,14 @@ async def menu_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     lines.append("<b>Cookies:</b>")
     for c in cookies:
         emoji, status = status_label(c)
-        lines.append(f"{emoji} <b>{c.name}</b>: {status}")
+        won = "🏆 " if c.has_won else ""
+        lines.append(f"{emoji} {won}<b>{c.name}</b>: {status}")
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Refresh", callback_data=f"menu:status{nav_suffix}"),
-         back_button(update, context)],
+        [InlineKeyboardButton("🔄 Refresh", callback_data="menu:status"),
+         back_button()],
     ])
     await query.edit_message_text("\n".join(lines), reply_markup=kb, parse_mode=ParseMode.HTML)
-
-
-_SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
-
-
-def _spark_block(val: int, vmin: int, vmax: int) -> str:
-    if vmax == vmin:
-        return _SPARK_BLOCKS[3]
-    idx = int((val - vmin) / (vmax - vmin) * (len(_SPARK_BLOCKS) - 1))
-    return _SPARK_BLOCKS[max(0, min(idx, len(_SPARK_BLOCKS) - 1))]
-
 
 
 # ─── History ───────────────────────────────────────────
@@ -91,27 +80,19 @@ async def menu_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     query = update.callback_query
     await query.answer()
 
-    oid = owner_id(update)
+    if not is_owner(update):
+        return
+
     async with AsyncSessionLocal() as session:
-        from src.db import WarHistoryModel
-        from sqlalchemy import select
-        user = await get_user(session, oid)
-        uid = user.id if user else None
-        if uid is None:
-            r = await session.execute(
-                select(WarHistoryModel).where(WarHistoryModel.id < 0)
-            )
-        else:
-            r = await session.execute(
-                select(WarHistoryModel)
-                .where(WarHistoryModel.user_id == uid)
-                .order_by(WarHistoryModel.started_at.desc())
-                .limit(15)
-            )
+        r = await session.execute(
+            select(WarHistoryModel)
+            .order_by(WarHistoryModel.started_at.desc())
+            .limit(15)
+        )
         history = list(r.scalars().all())
 
     if not history:
-        kb = InlineKeyboardMarkup([[back_button(update, context)]])
+        kb = InlineKeyboardMarkup([[back_button()]])
         await query.edit_message_text("📜 <b>Belum ada riwayat war.</b>", reply_markup=kb, parse_mode=ParseMode.HTML)
         return
 
@@ -124,7 +105,7 @@ async def menu_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Statistik Cookie", callback_data="menu:stats")],
-        [back_button(update, context)],
+        [back_button()],
     ])
     await query.edit_message_text("\n".join(lines), reply_markup=kb, parse_mode=ParseMode.HTML)
 
@@ -136,33 +117,19 @@ async def menu_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     query = update.callback_query
     await query.answer()
 
+    if not is_owner(update):
+        return
+
     from collections import defaultdict
     cookie_stats = defaultdict(lambda: {"success": 0, "fail": 0})
 
-    oid = owner_id(update)
     async with AsyncSessionLocal() as session:
-        from src.db import WarHistoryModel, CookieModel
-        from sqlalchemy import select
-        user = await get_user(session, oid)
-        uid = user.id if user else None
-        if uid is None:
-            r = await session.execute(
-                select(WarHistoryModel).where(WarHistoryModel.id < 0)
-            )
-        else:
-            r = await session.execute(
-                select(WarHistoryModel)
-                .where(WarHistoryModel.user_id == uid)
-                .order_by(WarHistoryModel.started_at.desc())
-                .limit(200)
-            )
-        history = list(r.scalars().all())
-
-        # Fetch cookie names for lookup
-        cookies_result = await session.execute(
-            select(CookieModel).where(CookieModel.owner_chat_id == oid)
+        r = await session.execute(
+            select(WarHistoryModel)
+            .order_by(WarHistoryModel.started_at.desc())
+            .limit(200)
         )
-        cookies = {c.id: c.name for c in cookies_result.scalars().all()}
+        history = list(r.scalars().all())
 
     if not history:
         kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:history")]])
@@ -172,9 +139,8 @@ async def menu_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # Parse semua results JSON
     for h in history:
         if h.results:
-            import json as _j
             try:
-                heroes = _j.loads(h.results)
+                heroes = json.loads(h.results)
                 for hero in heroes:
                     cn = hero.get("cookie_name", "?")
                     if hero.get("success"):
@@ -186,7 +152,7 @@ async def menu_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     if not cookie_stats:
         kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:history")]])
-        await query.edit_message_text("📊 <b>Statistik Cookie</b>\n\nTidak ada data yang bisa diproses.", reply_markup=kb, parse_mode=ParseMode.HTML)
+        await query.edit_message_text("📊 <b>Statistik Cookie</b>\n\nTidak ada data.", reply_markup=kb, parse_mode=ParseMode.HTML)
         return
 
     lines = [
@@ -194,7 +160,6 @@ async def menu_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"📜 Dari {len(history)} sesi war terakhir\n",
     ]
 
-    # Sort by total battles desc
     sorted_stats = sorted(cookie_stats.items(), key=lambda x: x[1]["success"] + x[1]["fail"], reverse=True)
 
     for cn, stats in sorted_stats:
@@ -212,46 +177,3 @@ async def menu_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("« Kembali", callback_data="menu:history")]])
     await query.edit_message_text("\n".join(lines), reply_markup=kb, parse_mode=ParseMode.HTML)
-
-
-# ─── Profile ─────────────────────────────────────────
-
-async def menu_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    oid = owner_id(update)
-
-    async with AsyncSessionLocal() as session:
-        user = await get_or_create_user(session, oid,
-            update.effective_chat.username,
-            update.effective_chat.first_name)
-        orders = await list_user_orders(session, user.id, limit=5) if user else []
-
-    if not user:
-        await query.edit_message_text("❌ Akun tidak ditemukan.", parse_mode=ParseMode.HTML)
-        return
-
-    text = (
-        f"👤 <b>Profil Kamu</b>\n"
-        f"{'─' * 28}\n"
-        f"📛 Nama: <b>{user.first_name or '—'}</b>\n"
-        f"💰 Saldo War: <b>{user.balance_war}</b>\n"
-        f"⚔️ Total War: <b>{user.total_wars}</b>\n"
-        f"🎫 Tiket Sukses: <b>{user.total_tickets}</b>\n"
-        f"📅 Bergabung: {user.created_at.strftime('%d/%m/%Y') if user.created_at else '—'}\n"
-    )
-
-    if user.is_suspended:
-        text += "\n⛔ <b>AKUN DISUSPEND</b>"
-
-    if orders:
-        text += f"\n{'─' * 28}\n<b>Pembelian Terakhir:</b>\n"
-        for o in orders[:3]:
-            s = "✅" if o.status == "paid" else "⏳"
-            text += f"  {s} {o.created_at.strftime('%d/%m') if o.created_at else '?'} — +{o.war_count} war (Rp {o.amount_idr:,})\n"
-
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎫 Beli Tiket War", callback_data="menu:beli")],
-        [back_button(update, context)],
-    ])
-    await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)

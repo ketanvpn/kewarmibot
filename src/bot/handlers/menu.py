@@ -1,73 +1,50 @@
-"""KeWarMiBot — Main menu, /start, /admin"""
+"""KeWarMiBot — Main menu, /start"""
 from src.bot.handlers._common import *
 
-# ─── /start — User Welcome (public) ────────────────────
+
+# ─── /start — Welcome ───────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """User /start — welcome then main menu."""
-    oid = owner_id(update)
-    async with AsyncSessionLocal() as session:
-        user = await get_or_create_user(session, oid,
-            update.effective_chat.username,
-            update.effective_chat.first_name,
-            update.effective_chat.last_name)
-        bal = user.balance_war if user else 0
+    """Owner /start — welcome then main menu."""
+    if not is_owner(update):
+        await update.message.reply_text("⛔ Bot ini hanya untuk owner.", parse_mode=ParseMode.HTML)
+        return
 
-    # Welcome message (only for /start command, not callback refreshes)
     if update.message:
         welcome = (
-            f"<b>⚔️ KeWarMiBot v2.0</b>\n"
+            f"<b>⚔️ KeWarMiBot v3.0</b>\n"
             f"<i>Xiaomi Bootloader Unlock — Automated War</i>\n"
             f"{SEP}\n"
-            f"👋 Selamat datang, <b>{user.first_name or 'User'}</b>!\n\n"
+            f"👋 Selamat datang, Bos!\n\n"
             f"Bot ini bantu kamu <b>war unlock Xiaomi</b> otomatis tiap malam.\n\n"
-            f"<b>3 Langkah:</b>\n"
+            f"<b>2 Langkah:</b>\n"
             f"1️⃣ 🍪 <b>Tambah Cookie</b> — login Xiaomi\n"
-            f"2️⃣ 🎫 <b>Beli Tiket</b> — Rp 15rb via QRIS\n"
-            f"3️⃣ ⚔️ <b>War Otomatis</b> — tiap jam 00:00 WIB\n\n"
-            f"🎫 Tiket kamu: <b>{bal}</b>\n"
-            f"📖 <i>Panduan lengkap: tombol 📖 Panduan</i>"
+            f"2️⃣ ⚔️ <b>War Otomatis</b> — sesuai jadwal\n\n"
+            f"📖 <i>Panduan: tombol 📖 Panduan</i>"
         )
         await update.message.reply_text(welcome, parse_mode=ParseMode.HTML)
 
     await main_menu(update, context)
 
 
-# ─── /menu — Quick Main Menu (no welcome) ──────────────
+# ─── /menu — Quick Main Menu ───────────────────────────
 
 async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/menu — langsung ke main menu tanpa welcome."""
+    if not is_owner(update):
+        return
     await main_menu(update, context)
 
 
-# ─── /admin — Admin Dashboard (admin only) ─────────────
-
-async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Admin panel — /admin command. Shared dashboard from _common."""
-    if not is_admin_update(update):
-        await update.message.reply_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
-        return
-    set_nav_admin(context, True)
-    text, kb = await admin_dashboard_text()
-    await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
-
-# ─── Main Menu — Public User Panel ─────────────────────
+# ─── Main Menu ──────────────────────────────────────────
 
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    oid = owner_id(update)
 
-    # Clear admin nav context — user menu
-    context.user_data.pop("_nav_admin", None)
+    if not is_owner(update):
+        return
 
-    cfg = await cfg_dict(update)
-    cookies = await cookies_list(update)
-
-    async with AsyncSessionLocal() as session:
-        user = await get_user(session, oid)
-        aw_enabled = user.war_enabled if user else True
-        bal = user.balance_war if user else 0
-    aw_text = "⚔️ Ikut" if aw_enabled else "💤 Lewat"
+    cfg = await cfg_dict()
+    cookies = await cookies_list()
 
     # Cookie selection status
     selected_ids = cfg.get("cookie_ids", [])
@@ -75,7 +52,8 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for c in cookies:
         sel = "✅" if c.id in selected_ids else "⬜"
         _, st = status_label(c)
-        cookie_status.append(f"  {sel} <b>{c.name}</b> — {st}")
+        won = "🏆 " if c.has_won else ""
+        cookie_status.append(f"  {sel} {won}<b>{c.name}</b> — {st}")
     if not cookies:
         cookie_status.append("  ❗ <i>Belum ada cookie — tambah di 🍪 Cookie</i>")
 
@@ -87,11 +65,10 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     hero_per = cfg.get("hero_per_cookie", 6)
 
     text = (
-        f"<b>⚔️ KeWarMiBot</b> <code>v2.0</code>\n"
+        f"<b>⚔️ KeWarMiBot</b> <code>v3.0</code>\n"
         f"<i>Xiaomi Bootloader Unlock — Automated War</i>\n"
         f"{SEP}\n"
         f"⏰ Reset: <code>{cd}</code>\n"
-        f"🎫 Tiket: <b>{bal}</b>  ·  ⚔️ War: <b>{aw_text}</b>\n"
     )
     if selected_count > 0:
         text += f"🥊 Siap: <b>{selected_count} cookie</b> × <b>{hero_per} hero</b> = <b>{hero_per * selected_count} tembakan</b>\n"
@@ -103,25 +80,17 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"<b>📋 Menu:</b>"
     )
 
-    kb = user_main_kb(update, aw_enabled)
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🍪 Cookie", callback_data="menu:cookies"),
+         InlineKeyboardButton("⚙️ Config", callback_data="menu:config")],
+        [InlineKeyboardButton("📜 Riwayat", callback_data="menu:history"),
+         InlineKeyboardButton("📊 Status", callback_data="menu:status")],
+        [InlineKeyboardButton("⚔️ War Debug", callback_data="menu:war_debug"),
+         InlineKeyboardButton("🔌 Proxy Pool", callback_data="pool:menu")],
+        [InlineKeyboardButton("📖 Panduan", callback_data="menu:guide")],
+    ])
 
     if query:
         await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
     else:
         await update.message.reply_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
-
-
-# ─── User-Only Keyboard ────────────────────────────────
-
-def user_main_kb(update: Update, war_enabled: bool = True) -> InlineKeyboardMarkup:
-    """Public user main menu keyboard."""
-    toggle_label = "⚔️ Ikut War" if war_enabled else "💤 Lewat"
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🍪 Cookie Saya", callback_data="menu:cookies"),
-         InlineKeyboardButton("🎫 Beli Tiket", callback_data="menu:beli")],
-        [InlineKeyboardButton("📜 Riwayat War", callback_data="menu:history"),
-         InlineKeyboardButton("👤 Profil Saya", callback_data="menu:profile")],
-        [InlineKeyboardButton("📖 Panduan", callback_data="menu:guide"),
-         InlineKeyboardButton(toggle_label, callback_data="menu:autowar")],
-        [InlineKeyboardButton("💬 Support", callback_data="menu:support")],
-    ])

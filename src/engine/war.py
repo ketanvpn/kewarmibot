@@ -78,6 +78,7 @@ class WarConfig:
     safety_margin: int = 30
     hero_spacing_ms: int = 0
     use_pool: bool = False
+    proxies: list[str] = field(default_factory=list)  # proxy URLs to distribute
     owner_chat_id: str = ""
     debug: bool = False
     war_hour: int = 0       # target hour (0-23)
@@ -189,9 +190,10 @@ def _war_worker(
     perf_base_ns: int,
     ntp_offset: int,
     core_id: int | None,
+    proxy_url: str | None,
     result_queue: mp.Queue,
 ) -> None:
-    result = send_war_request(cookie, hero_id, target_wave, base_time_ms, perf_base_ns, ntp_offset, core_id)
+    result = send_war_request(cookie, hero_id, target_wave, base_time_ms, perf_base_ns, ntp_offset, core_id, proxy_url)
     result.cookie_name = cookie_name
     result_queue.put(result)
 
@@ -290,9 +292,16 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
         token, cname = config.cookies[cookie_idx]
         target_wave = base_send + offset
         core_id = core_ids[i % len(core_ids)] if core_ids else None
+        # Proxy: cookie pertama (idx 0) = direct, cookie 2+ = proxy
+        if cookie_idx == 0 or not config.proxies:
+            proxy_url = None
+        else:
+            # Round-robin proxy untuk cookie 2+
+            proxy_idx = (i // num_cookies) % len(config.proxies) if config.proxies else 0
+            proxy_url = config.proxies[proxy_idx] if config.proxies else None
         p = mp.Process(
             target=_war_worker,
-            args=(hero_id, target_wave, token, cname, base_time, base_perf, ntp_offset, core_id, result_queue),
+            args=(hero_id, target_wave, token, cname, base_time, base_perf, ntp_offset, core_id, proxy_url, result_queue),
         )
         processes.append(p)
         time.sleep(0.15)

@@ -1,6 +1,7 @@
-"""KeWarMiBot — Cookie CRUD & ConversationHandler"""
+"""KeWarMiBot — Cookie CRUD & ConversationHandler. Single-owner."""
 from src.bot.handlers._common import *
 from src.bot.handlers.menu import main_menu
+
 
 # ─── Cookie Management ─────────────────────────────────
 
@@ -8,14 +9,18 @@ async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE, *, _s
     query = update.callback_query
     if not _skip_answer:
         await query.answer()
-    cookies = await cookies_list(update)
-    cfg = await cfg_dict(update)
+
+    if not is_owner(update):
+        return
+
+    cookies = await cookies_list()
+    cfg = await cfg_dict()
     selected_ids = cfg.get("cookie_ids", [])
 
     if not cookies:
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ Tambah Cookie", callback_data="cookie:add")],
-            [back_button(update, context)],
+            [back_button()],
         ])
         await query.edit_message_text("🍪 <b>Belum ada cookie</b>\n\nTambah cookie untuk mulai war.", reply_markup=kb, parse_mode=ParseMode.HTML)
         return
@@ -25,27 +30,33 @@ async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE, *, _s
     for c in cookies:
         emoji, status = status_label(c)
         in_war = c.id in selected_ids
-        won_badge = "🏆 " if c.has_won else ""
+        won_badge = "🏆" if c.has_won else ""
+
+        # Status line
+        war_icon = "✅" if in_war else "⬜"
         if c.has_won:
-            war_toggle = "🏆 Sudah Menang"
-        else:
-            war_toggle = "✅ Ikut War" if in_war else "⬜ Ikut War"
-        lines.append(f"{emoji} {won_badge}<b>{c.name}</b> — {status}")
-        kb_rows.append([
-            InlineKeyboardButton(f"{won_badge}{c.name} ({war_toggle})", callback_data=f"cookie:detail:{c.id}"),
-            InlineKeyboardButton("🗑", callback_data=f"cookie:delete_confirm:{c.id}"),
-        ])
+            war_icon = "🏆"
+        lines.append(f"{war_icon} {emoji} <b>{c.name}</b> — {status}")
+
+        # Buttons: [Toggle War | Detail | Delete] in one row
         if c.has_won:
             kb_rows.append([
-                InlineKeyboardButton("📢 Hapus cookie ini — sudah menang", callback_data=f"cookie:delete_confirm:{c.id}"),
+                InlineKeyboardButton(f"🏆 {c.name} (Menang)", callback_data=f"cookie:detail:{c.id}"),
+                InlineKeyboardButton("🗑", callback_data=f"cookie:delete_confirm:{c.id}"),
             ])
         else:
+            toggle_label = "❌" if in_war else "✅"
             kb_rows.append([
-                InlineKeyboardButton("❌ Keluarkan dari War" if in_war else "✅ Masukkan ke War", callback_data=f"cookie:toggle_war:{c.id}"),
+                InlineKeyboardButton(toggle_label, callback_data=f"cookie:toggle_war:{c.id}"),
+                InlineKeyboardButton(c.name, callback_data=f"cookie:detail:{c.id}"),
+                InlineKeyboardButton("🗑", callback_data=f"cookie:delete_confirm:{c.id}"),
             ])
-    kb_rows.append([InlineKeyboardButton("🔄 Refresh Semua Cookie", callback_data="cookie:refresh_all")])
-    kb_rows.append([InlineKeyboardButton("➕ Tambah Cookie", callback_data="cookie:add")])
-    kb_rows.append([back_button(update, context)])
+
+    kb_rows.append([
+        InlineKeyboardButton("🔄 Refresh", callback_data="cookie:refresh_all"),
+        InlineKeyboardButton("➕ Tambah", callback_data="cookie:add"),
+    ])
+    kb_rows.append([back_button()])
 
     await query.edit_message_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode=ParseMode.HTML)
 
@@ -53,8 +64,12 @@ async def menu_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE, *, _s
 async def cookie_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
+
+    if not is_owner(update):
+        return ConversationHandler.END
+
     await query.edit_message_text(
-        "📝 Masukkan <b>nama</b> untuk cookie ini (misal: \"Punya Andi\"):\n\nKetik /cancel untuk batal.",
+        "📝 Masukkan <b>nama</b> untuk cookie ini (misal: \"Akun Utama\"):\n\nKetik /cancel untuk batal.",
         parse_mode=ParseMode.HTML,
     )
     return WAIT_COOKIE_NAME
@@ -82,7 +97,7 @@ async def cookie_add_token(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         pass
 
     async with AsyncSessionLocal() as session:
-        cookie = await add_cookie(session, name, token, owner_id(update))
+        cookie = await add_cookie(session, name, token)
 
     emoji, status = status_label(cookie)
     await update.message.reply_text(f"🍪 Cookie tersimpan!\n\n<b>{name}</b>: {emoji} {status}", parse_mode=ParseMode.HTML)
@@ -99,12 +114,14 @@ async def cookie_add_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def cookie_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
+
+    if not is_owner(update):
+        return
+
     cid = int(query.data.split(":")[-1])
 
     async with AsyncSessionLocal() as session:
-        from sqlalchemy import select
-        r = await session.execute(select(CookieModel).where(CookieModel.id == cid, CookieModel.owner_chat_id == owner_id(update)))
-        cookie = r.scalar_one_or_none()
+        cookie = await get_cookie(session, cid)
 
     if not cookie:
         await query.edit_message_text("❌ Cookie tidak ditemukan.")
@@ -116,6 +133,9 @@ async def cookie_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"🍪 <b>{cookie.name}</b>\n\n{emoji} Status: {status}\n"
         f"🕐 Terakhir dicek: {last_check}\n📅 Dibuat: {cookie.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
     )
+    if cookie.has_won:
+        text += "\n\n🏆 <b>Cookie ini sudah dapat tiket!</b>"
+
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔄 Refresh Status", callback_data=f"cookie:refresh:{cid}")],
         [InlineKeyboardButton("🗑 Hapus Cookie", callback_data=f"cookie:delete_confirm:{cid}")],
@@ -124,20 +144,71 @@ async def cookie_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await query.edit_message_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
 
+async def _render_cookies_menu(query, selected_ids: list[int]) -> None:
+    """Render cookie menu with known selected_ids (bypass stale DB read)."""
+    cookies = await cookies_list()
+
+    if not cookies:
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ Tambah Cookie", callback_data="cookie:add")],
+            [back_button()],
+        ])
+        await query.edit_message_text("🍪 <b>Belum ada cookie</b>\n\nTambah cookie untuk mulai war.", reply_markup=kb, parse_mode=ParseMode.HTML)
+        return
+
+    lines = ["🍪 <b>Kelola Cookie</b>\n"]
+    kb_rows = []
+    for c in cookies:
+        emoji, status = status_label(c)
+        in_war = c.id in selected_ids
+
+        # Status line
+        war_icon = "✅" if in_war else "⬜"
+        if c.has_won:
+            war_icon = "🏆"
+        lines.append(f"{war_icon} {emoji} <b>{c.name}</b> — {status}")
+
+        # Buttons
+        if c.has_won:
+            kb_rows.append([
+                InlineKeyboardButton(f"🏆 {c.name} (Menang)", callback_data=f"cookie:detail:{c.id}"),
+                InlineKeyboardButton("🗑", callback_data=f"cookie:delete_confirm:{c.id}"),
+            ])
+        else:
+            toggle_label = "❌" if in_war else "✅"
+            kb_rows.append([
+                InlineKeyboardButton(toggle_label, callback_data=f"cookie:toggle_war:{c.id}"),
+                InlineKeyboardButton(c.name, callback_data=f"cookie:detail:{c.id}"),
+                InlineKeyboardButton("🗑", callback_data=f"cookie:delete_confirm:{c.id}"),
+            ])
+
+    kb_rows.append([
+        InlineKeyboardButton("🔄 Refresh", callback_data="cookie:refresh_all"),
+        InlineKeyboardButton("➕ Tambah", callback_data="cookie:add"),
+    ])
+    kb_rows.append([back_button()])
+
+    await query.edit_message_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode=ParseMode.HTML)
+
+
 async def cookie_toggle_war(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Toggle cookie in/out of war config."""
     query = update.callback_query
     await query.answer()
+
+    if not is_owner(update):
+        return
+
     cid = int(query.data.split(":")[-1])
-    
+
     # Check if cookie already won
-    cookies = await cookies_list(update)
+    cookies = await cookies_list()
     cookie = next((c for c in cookies if c.id == cid), None)
     if cookie and cookie.has_won:
         await query.answer("🏆 Cookie ini sudah dapat tiket! Hapus dari daftar.", show_alert=True)
         return
 
-    cfg = await cfg_dict(update)
+    cfg = await cfg_dict()
     selected_ids = list(cfg.get("cookie_ids", []))
 
     if cid in selected_ids:
@@ -151,7 +222,7 @@ async def cookie_toggle_war(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.answer("✅ Cookie dimasukkan ke war", show_alert=False)
 
     async with AsyncSessionLocal() as session:
-        await save_config(session, owner_id(update),
+        await save_config(session,
                           cookie_ids=selected_ids,
                           hero_per_cookie=cfg.get("hero_per_cookie", 6),
                           bracket_factor=cfg["bracket_factor"],
@@ -159,34 +230,37 @@ async def cookie_toggle_war(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                           war_hour=cfg.get("war_hour", 0),
                           war_minute=cfg.get("war_minute", 0),
                           war_tz=cfg.get("war_tz", "Asia/Shanghai"))
-        await session.close()
-    
-    # HACK: Force persist + wait for WAL flush before reading back
-    # Without this, cfg_dict() in menu_cookies() may return stale data
-    # because aiosqlite WAL writes are async-visible only after full checkpoint
-    import time
-    time.sleep(0.05)  # 50ms settle for SQLite WAL visibility
 
-    query.data = "menu:cookies"
-    await menu_cookies(update, context, _skip_answer=True)
+    # Langsung render ulang dengan data yang kita tau sudah benar
+    await _render_cookies_menu(query, selected_ids)
+
 
 async def cookie_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
+
+    if not is_owner(update):
+        return
+
     cid = int(query.data.split(":")[-1])
     async with AsyncSessionLocal() as session:
-        cookie = await refresh_cookie_status(session, cid, owner_id(update))
+        cookie = await refresh_cookie_status(session, cid)
     if not cookie:
         await query.edit_message_text("❌ Cookie tidak ditemukan.")
         return
     emoji, status = status_label(cookie)
     await query.edit_message_text(f"🔄 Status diperbarui!\n\n<b>{cookie.name}</b>: {emoji} {status}", parse_mode=ParseMode.HTML)
 
+
 async def cookie_refresh_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Refresh status semua cookie sekaligus."""
     query = update.callback_query
     await query.answer()
-    cookies = await cookies_list(update)
+
+    if not is_owner(update):
+        return
+
+    cookies = await cookies_list()
 
     if not cookies:
         await query.edit_message_text("🍪 <b>Belum ada cookie.</b>", parse_mode=ParseMode.HTML)
@@ -199,7 +273,7 @@ async def cookie_refresh_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
     async with AsyncSessionLocal() as session:
         for c in cookies:
             try:
-                await refresh_cookie_status(session, c.id, owner_id(update))
+                await refresh_cookie_status(session, c.id)
                 ok += 1
                 lines.append(f"✅ {c.name}")
             except Exception as e:
@@ -215,6 +289,10 @@ async def cookie_refresh_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def cookie_delete_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
+
+    if not is_owner(update):
+        return
+
     cid = int(query.data.split(":")[-1])
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Ya, hapus", callback_data=f"cookie:delete:{cid}"),
@@ -226,10 +304,13 @@ async def cookie_delete_confirm(update: Update, context: ContextTypes.DEFAULT_TY
 async def cookie_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
+
+    if not is_owner(update):
+        return
+
     cid = int(query.data.split(":")[-1])
     async with AsyncSessionLocal() as session:
-        deleted = await delete_cookie(session, cid, owner_id(update))
+        deleted = await delete_cookie(session, cid)
     await query.edit_message_text("🗑 Cookie dihapus." if deleted else "❌ Gagal menghapus.")
     await asyncio.sleep(0.5)
     await main_menu(update, context)
-

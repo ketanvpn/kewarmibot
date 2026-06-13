@@ -1,6 +1,5 @@
-"""KeWarMiBot — Settings via env vars."""
+"""KeWarMiBot — Settings via env vars. Single-owner mode."""
 
-from pathlib import Path
 from pydantic_settings import BaseSettings
 
 
@@ -13,15 +12,15 @@ class Settings(BaseSettings):
     war_bracket_factor_default: float = 0.8
     war_safety_margin_default: int = 30
 
-    # KetantechPay payment gateway
-    ketantechpay_base_url: str = ""
-    ketantechpay_client_key: str = ""
-    ketantechpay_webhook_secret: str = ""
-    webhook_base_url: str = ""
-
     @property
     def admin_ids(self) -> set[int]:
         return {int(x.strip()) for x in self.admin_chat_ids.split(",") if x.strip()}
+
+    @property
+    def owner_chat_id(self) -> str:
+        """Primary owner chat id (first admin)."""
+        ids = self.admin_ids
+        return str(min(ids)) if ids else "690744680"
 
     @property
     def encryption_key_bytes(self) -> bytes:
@@ -29,7 +28,7 @@ class Settings(BaseSettings):
             raise ValueError("ENCRYPTION_KEY not set")
         return bytes.fromhex(self.encryption_key)
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()

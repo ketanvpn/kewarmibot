@@ -109,6 +109,48 @@ def _get_core_ids() -> list[int]:
     return cores
 
 
+def _connect_via_proxy(proxy_url: str, target_host: str, target_port: int) -> socket.socket:
+    """Connect to target via HTTP CONNECT proxy.
+    
+    proxy_url format: user:pass:host:port
+    """
+    parts = proxy_url.split(":")
+    if len(parts) == 4:
+        puser, ppass, phost, pport = parts
+    elif len(parts) == 2:
+        phost, pport = parts
+        puser, ppass = None, None
+    else:
+        raise ValueError(f"Invalid proxy format: {proxy_url}")
+
+    sock = socket.create_connection((phost, int(pport)), timeout=10)
+
+    # CONNECT request
+    connect_req = f"CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n"
+    if puser and ppass:
+        import base64
+        cred = base64.b64encode(f"{puser}:{ppass}".encode()).decode()
+        connect_req += f"Proxy-Authorization: Basic {cred}\r\n"
+    connect_req += "\r\n"
+
+    sock.sendall(connect_req.encode())
+
+    # Read response
+    resp = b""
+    while b"\r\n\r\n" not in resp:
+        chunk = sock.recv(1024)
+        if not chunk:
+            raise ConnectionError("Proxy closed connection")
+        resp += chunk
+
+    status_line = resp.split(b"\r\n")[0].decode()
+    if "200" not in status_line:
+        sock.close()
+        raise ConnectionError(f"Proxy CONNECT failed: {status_line}")
+
+    return sock
+
+
 def send_war_request(
     cookie: str,
     hero_id: int,
@@ -117,8 +159,12 @@ def send_war_request(
     perf_base_ns: int,
     ntp_offset: int,
     core_id: int | None = None,
+    proxy_url: str | None = None,
 ) -> WarResult:
-    """Send a single war request at target_time_ms (± spin-wait)."""
+    """Send a single war request at target_time_ms (± spin-wait).
+    
+    proxy_url format: user:pass:host:port (HTTP CONNECT proxy)
+    """
     # Core affinity — pin to performance core
     if core_id is not None:
         import os
@@ -141,7 +187,10 @@ def send_war_request(
     ).encode("utf-8")
 
     try:
-        sock = socket.create_connection((HOST, 443), timeout=5)
+        if proxy_url:
+            sock = _connect_via_proxy(proxy_url, HOST, 443)
+        else:
+            sock = socket.create_connection((HOST, 443), timeout=5)
         ctx = ssl.create_default_context()
         with ctx.wrap_socket(sock, server_hostname=HOST) as ssock:
             # Sleep until close to target

@@ -1,5 +1,6 @@
-"""KeWarMiBot — War config editor"""
+"""KeWarMiBot — War config editor. Single-owner."""
 from src.bot.handlers._common import *
+
 
 # ─── War Config ────────────────────────────────────────
 
@@ -7,14 +8,13 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     await query.answer()
 
-    # Admin-only guard
-    if not is_admin_update(update):
-        await query.edit_message_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
+    if not is_owner(update):
         return
 
-    cfg = await cfg_dict(update)
-    cookies = await cookies_list(update)
+    cfg = await cfg_dict()
+    cookies = await cookies_list()
     selected_ids = cfg.get("cookie_ids", [])
+
     # Cookie lines
     cookie_lines = []
     for cid in selected_ids:
@@ -54,16 +54,9 @@ async def menu_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         [InlineKeyboardButton(f"🛡️ Safety: {cfg['safety_margin']}ms", callback_data="cfg:safety")],
     ]
 
-    # Cookie toggle — bebas pilih 1-6
-    for c in cookies:
-        in_war = c.id in selected_ids
-        disabled = not in_war and len(selected_ids) >= MAX_COOKIES_PER_WAR
-        label = f"{'✅' if in_war else ('🔒' if disabled else '⬜')} {c.name}"
-        kb_rows.append([InlineKeyboardButton(label, callback_data=f"cfg:toggle_cookie:{c.id}")])
-
-    kb_rows.append([back_button(update, context)])
+    kb_rows.append([InlineKeyboardButton("🍪 Pilih Cookie di Menu Cookie", callback_data="menu:cookies")])
+    kb_rows.append([back_button()])
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode=ParseMode.HTML)
-
 
 
 async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -72,12 +65,10 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     data = query.data.split(":")
     field = data[1] if len(data) > 1 else ""
 
-    # Admin-only guard
-    if not is_admin_update(update):
-        await query.edit_message_text("⛔ Akses ditolak — admin only.", parse_mode=ParseMode.HTML)
+    if not is_owner(update):
         return
 
-    cfg = await cfg_dict(update)
+    cfg = await cfg_dict()
     selected_ids = cfg.get("cookie_ids", [])
 
     if field == "hero":
@@ -110,28 +101,7 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         kb_rows.append([InlineKeyboardButton("« Kembali", callback_data="menu:config")])
         await query.edit_message_text(f"Pilih Safety (saat ini: {current}ms):", reply_markup=InlineKeyboardMarkup(kb_rows))
 
-    elif field == "toggle_cookie":
-        cid = int(data[2])
-        if cid in selected_ids:
-            selected_ids = [i for i in selected_ids if i != cid]
-        else:
-            if len(selected_ids) >= MAX_COOKIES_PER_WAR:
-                await query.answer(f"Maksimal {MAX_COOKIES_PER_WAR} cookie per war!", show_alert=True)
-                return
-            selected_ids = selected_ids + [cid]
-        async with AsyncSessionLocal() as session:
-            await save_config(session, owner_id(update),
-                              cookie_ids=selected_ids,
-                              hero_per_cookie=cfg.get("hero_per_cookie", 6),
-                              bracket_factor=cfg["bracket_factor"],
-                              safety_margin=cfg["safety_margin"],
-                              war_hour=cfg.get("war_hour", 0),
-                              war_minute=cfg.get("war_minute", 0),
-                              war_tz=cfg.get("war_tz", "Asia/Shanghai"))
-        await menu_config(update, context)
-
     elif field == "time":
-        # Hour selector for war target
         current_wh = cfg.get("war_hour", 0)
         current_tz = cfg.get("war_tz", "Asia/Shanghai")
         hour_btns = []
@@ -151,7 +121,6 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
 
     elif field == "tz":
-        # Timezone selector
         current_tz = cfg.get("war_tz", "Asia/Shanghai")
         tz_presets = [
             ("Asia/Shanghai", "🇨🇳 Beijing (UTC+8)"),
@@ -175,7 +144,7 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         if param == "tz":
             val = data[3]
             async with AsyncSessionLocal() as session:
-                await save_config(session, owner_id(update),
+                await save_config(session,
                                   cookie_ids=selected_ids,
                                   hero_per_cookie=cfg.get("hero_per_cookie", 6),
                                   bracket_factor=cfg["bracket_factor"],
@@ -184,14 +153,11 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                                   war_minute=cfg.get("war_minute", 0),
                                   war_tz=val)
             await query.answer(f"Timezone: {val}", show_alert=False)
-        elif param == "mode":
-            # Removed — hero is manual now. Keep handler stub for any stray callbacks.
-            await query.answer("Mode tidak diperlukan — atur hero manual", show_alert=False)
         elif param == "time":
             wh = int(data[3])
             wm = int(data[4]) if len(data) > 4 else 0
             async with AsyncSessionLocal() as session:
-                await save_config(session, owner_id(update),
+                await save_config(session,
                                   cookie_ids=selected_ids,
                                   hero_per_cookie=cfg.get("hero_per_cookie", 6),
                                   bracket_factor=cfg["bracket_factor"],
@@ -206,7 +172,7 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             bracket = val if param == "bracket" else cfg["bracket_factor"]
             safety = val if param == "safety" else cfg["safety_margin"]
             async with AsyncSessionLocal() as session:
-                await save_config(session, owner_id(update),
+                await save_config(session,
                                   cookie_ids=selected_ids,
                                   hero_per_cookie=hero,
                                   bracket_factor=bracket,
@@ -215,4 +181,3 @@ async def config_set(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                                   war_minute=cfg.get("war_minute", 0),
                                   war_tz=cfg.get("war_tz", "Asia/Shanghai"))
         await menu_config(update, context)
-

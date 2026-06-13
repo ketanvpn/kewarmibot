@@ -1,12 +1,11 @@
 """Background scheduler: auto-war, latency monitor, backup, cookie refresh.
-Auto-war now per-user: setiap user punya cookie + saldo → auto-war di jam yg diset admin.
+Single-owner mode — no user loop, just run for owner.
 """
 
 import asyncio
 import datetime
 import logging
 import os
-import shutil
 import glob
 from typing import Callable
 
@@ -16,11 +15,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from src.config import settings
 from src.db import AsyncSessionLocal, WarHistoryModel, LatencyLogModel, CookieModel
-from src.cookie_service import get_cookie_token, refresh_cookie_status
+from src.cookie_service import refresh_cookie_status
 from src.war_config_service import load_config
 from src.engine.api import measure_latency
-from src.engine.war import run_war_sync, WarConfig, WarResultReport
-from src.user_service import get_user, get_user_by_id, deduct_balance, add_tickets, list_users
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
@@ -28,18 +25,15 @@ logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
 _notifier: Callable | None = None
 
+
 # ─── Helpers ───────────────────────────────────────────
 
-async def _get_global_war_time(session) -> tuple[int, int, str]:
-    """Get global war time from bot_settings. Default 00:00 Asia/Shanghai."""
-    from src.db import BotSettingModel
-    r = await session.execute(select(BotSettingModel).where(BotSettingModel.key == "war_hour"))
-    wh = int(r.scalar_one_or_none().value) if (s := r.scalar_one_or_none()) and s.value else 0
-    r = await session.execute(select(BotSettingModel).where(BotSettingModel.key == "war_minute"))
-    wm = int(r.scalar_one_or_none().value) if (s := r.scalar_one_or_none()) and s.value else 0
-    r = await session.execute(select(BotSettingModel).where(BotSettingModel.key == "war_tz"))
-    tz = r.scalar_one_or_none().value if (s := r.scalar_one_or_none()) and s.value else "Asia/Shanghai"
-    return wh, wm, tz
+async def _get_war_time() -> tuple[int, int, str]:
+    """Get war time from config. Default 00:00 Asia/Shanghai."""
+    async with AsyncSessionLocal() as session:
+        cfg = await load_config(session)
+    return cfg.get("war_hour", 0), cfg.get("war_minute", 0), cfg.get("war_tz", "Asia/Shanghai")
+
 
 # ─── Latency Monitor ────────────────────────────────────
 
@@ -55,57 +49,36 @@ async def _save_latency():
     except Exception as e:
         logger.error(f"Latency log failed: {e}")
 
-# ─── Per-User War Runner ─────────────────────────────────
 
-async def _run_war_for_user(user_tg_id: str, notify: Callable | None = None) -> bool:
-    """
-    Run auto-war untuk satu user via execute_war().
-    """
+# ─── Auto-War (Single Owner) ─────────────────────────────
+
+async def _run_auto_war(notify: Callable | None = None) -> bool:
+    """Run auto-war for owner."""
     from src.engine.war_runner import execute_war
-
-    # Pre-check: suspended + war_enabled + has cookies
-    async with AsyncSessionLocal() as session:
-        user = await get_user(session, user_tg_id)
-        if not user:
-            logger.warning(f"Auto-war skip: user not found {user_tg_id}")
-            return False
-        if user.is_suspended:
-            logger.info(f"Auto-war skip: user {user_tg_id} suspended")
-            return False
-        if not user.war_enabled:
-            logger.info(f"Auto-war skip: user {user.first_name or user_tg_id} disabled auto-war")
-            return False
-
-    report = await execute_war(user_tg_id, debug=False, deduct=True, notify=notify)
+    report = await execute_war(debug=False, notify=notify)
     return report is not None
 
 
-async def _war_warning_for_user(user_tg_id: str, notify: Callable | None = None):
-    """Kirim warning ke satu user 5 menit sebelum war."""
+async def _war_warning(notify: Callable | None = None):
+    """Send warning 5 minutes before war."""
     if not notify:
         return
 
-    async with AsyncSessionLocal() as session:
-        user = await get_user(session, user_tg_id)
-        if not user or user.is_suspended:
-            return
+    owner = settings.owner_chat_id
 
-        cfg = await load_config(session, user_tg_id)
+    async with AsyncSessionLocal() as session:
+        cfg = await load_config(session)
         selected_ids = cfg.get("cookie_ids", [])
         if not selected_ids:
             return
 
-        hero_per_cookie = cfg.get("hero_per_cookie", 3)
-        cost = len(selected_ids)
+        hero_per_cookie = cfg.get("hero_per_cookie", 6)
+        wh = cfg.get("war_hour", 0)
+        wm = cfg.get("war_minute", 0)
+        tz_name = cfg.get("war_tz", "Asia/Shanghai")
 
-        if user.balance_war < cost:
-            return
-
-        wh, wm, tz_name = await _get_global_war_time(session)
-
-        from sqlalchemy import select as _sel
         r = await session.execute(
-            _sel(LatencyLogModel).order_by(LatencyLogModel.timestamp.desc()).limit(1)
+            select(LatencyLogModel).order_by(LatencyLogModel.timestamp.desc()).limit(1)
         )
         lat = r.scalar_one_or_none()
         lat_text = f"{lat.latency_ms}ms" if lat else "unknown"
@@ -117,14 +90,17 @@ async def _war_warning_for_user(user_tg_id: str, notify: Callable | None = None)
         f"⚡ Latensi: {lat_text}\n"
         f"🥊 Hero/cookie: {hero_per_cookie}\n"
         f"🍪 Cookie: {len(selected_ids)}\n"
-        f"🔄 Request: {hero_per_cookie * len(selected_ids)}\n"
-        f"🎫 Tiket: {user.balance_war} → {user.balance_war - cost}\n\n"
+        f"🔄 Request: {hero_per_cookie * len(selected_ids)}\n\n"
         f"<i>Pastikan koneksi stabil.</i>"
     )
-    await notify(user_tg_id, msg)
+    await notify(owner, msg)
 
 
 # ─── Main Scheduler Setup ───────────────────────────────
+
+_war_triggered_today = False
+_warned_today = False
+
 
 def start_scheduler(get_notifier: Callable | None = None):
     """Start all background scheduler jobs."""
@@ -141,13 +117,11 @@ def start_scheduler(get_notifier: Callable | None = None):
     )
 
     # 2. Dynamic auto-war checker — runs every minute
-    _war_triggered_today: dict[str, bool] = {}
-    _warned_today: dict[str, bool] = {}
-
     async def _dynamic_war_checker():
-        """Check every minute: if close to war time → warn or execute for ALL users."""
-        async with AsyncSessionLocal() as session:
-            wh, wm, tz_name = await _get_global_war_time(session)
+        """Check every minute: if close to war time → warn or execute."""
+        global _war_triggered_today, _warned_today
+
+        wh, wm, tz_name = await _get_war_time()
 
         # Calc diff to target
         from datetime import timezone as dt_tz, timedelta
@@ -164,76 +138,63 @@ def start_scheduler(get_notifier: Callable | None = None):
 
         # Reset daily trackers at midnight
         if now_minutes < 1:
-            _war_triggered_today.clear()
-            _warned_today.clear()
+            _war_triggered_today = False
+            _warned_today = False
 
-        # Get ALL users (bukan cuma admin)
-        async with AsyncSessionLocal() as session:
-            from src.db import UserModel
-            r = await session.execute(select(UserModel).where(UserModel.is_suspended == False, UserModel.war_enabled == True))
-            users = r.scalars().all()
+        try:
+            # 5 min warning
+            if diff == 5 and not _warned_today:
+                _warned_today = True
+                asyncio.create_task(_war_warning(notify=_notifier))
 
-        for user in users:
-            uid_str = user.telegram_id
-            try:
-                # 5 min warning
-                if diff == 5 and not _warned_today.get(uid_str):
-                    _warned_today[uid_str] = True
-                    asyncio.create_task(_war_warning_for_user(uid_str, notify=_notifier))
+            # 3 min trigger → execute war
+            if 0 < diff <= 3 and not _war_triggered_today:
+                _war_triggered_today = True
+                logger.info(f"Auto-war trigger ({diff}min to target)")
+                asyncio.create_task(_run_auto_war(notify=_notifier))
 
-                # 3 min trigger → execute war
-                if 0 < diff <= 3 and not _war_triggered_today.get(uid_str):
-                    _war_triggered_today[uid_str] = True
-                    logger.info(f"Auto-war trigger for {user.first_name or uid_str} ({diff}min to target)")
-                    asyncio.create_task(_run_war_for_user(uid_str, notify=_notifier))
-
-            except Exception as e:
-                logger.error(f"Dynamic war checker error for {uid_str}: {e}")
+        except Exception as e:
+            logger.error(f"Dynamic war checker error: {e}")
 
     scheduler.add_job(
         _dynamic_war_checker,
         trigger=IntervalTrigger(minutes=1),
         id="dynamic_war_checker",
-        name="Dynamic War Checker (All Users)",
+        name="Dynamic War Checker",
         replace_existing=True,
     )
 
-    # 3. Daily cookie auto-refresh at 10:00 CST — ALL users
+    # 3. Daily cookie auto-refresh at 10:00 CST
     async def _auto_refresh_cookies():
-        """Refresh status semua cookie MILIK SEMUA user."""
+        """Refresh status all cookies for owner."""
         async with AsyncSessionLocal() as session:
-            r = await session.execute(select(CookieModel))
-            cookies = list(r.scalars().all())
+            from src.cookie_service import list_cookies
+            cookies = await list_cookies(session)
             refreshed = 0
             failed = 0
-            per_user: dict[str, int] = {}
             for c in cookies:
                 try:
-                    await refresh_cookie_status(session, c.id, c.owner_chat_id)
+                    await refresh_cookie_status(session, c.id)
                     refreshed += 1
-                    per_user[c.owner_chat_id] = per_user.get(c.owner_chat_id, 0) + 1
                 except Exception as e:
                     logger.error(f"Auto-refresh failed for cookie {c.id}: {e}")
                     failed += 1
             await session.commit()
-            logger.info(f"Auto-refresh done: {refreshed} ok, {failed} failed across {len(per_user)} users")
+            logger.info(f"Auto-refresh done: {refreshed} ok, {failed} failed")
 
-            # Notify admin aja soal status global
             if _notifier and failed > 0:
-                for uid in settings.admin_ids:
-                    await _notifier(str(uid), (
-                        f"🍪 <b>Auto-Refresh Cookie Harian</b>\n\n"
-                        f"✅ {refreshed} berhasil\n"
-                        f"❌ {failed} gagal\n"
-                        f"👥 {len(per_user)} user terpantau\n\n"
-                        f"<i>Cek menu Cookies untuk detail.</i>"
-                    ))
+                await _notifier(settings.owner_chat_id, (
+                    f"🍪 <b>Auto-Refresh Cookie Harian</b>\n\n"
+                    f"✅ {refreshed} berhasil\n"
+                    f"❌ {failed} gagal\n\n"
+                    f"<i>Cek menu Cookies untuk detail.</i>"
+                ))
 
     scheduler.add_job(
         _auto_refresh_cookies,
         trigger=CronTrigger(hour=10, minute=0, timezone="Asia/Shanghai"),
         id="cookie_auto_refresh",
-        name="Cookie Auto Refresh (All Users)",
+        name="Cookie Auto Refresh",
         replace_existing=True,
     )
 
@@ -278,8 +239,7 @@ def start_scheduler(get_notifier: Callable | None = None):
         except Exception as e:
             logger.error(f"DB backup failed: {e}")
             if _notifier:
-                for uid in settings.admin_ids:
-                    await _notifier(str(uid), f"🗄️ <b>DB Backup Gagal!</b>\n\nError: {e}")
+                await _notifier(settings.owner_chat_id, f"🗄️ <b>DB Backup Gagal!</b>\n\nError: {e}")
 
     scheduler.add_job(
         _backup_db,
@@ -290,4 +250,4 @@ def start_scheduler(get_notifier: Callable | None = None):
     )
 
     scheduler.start()
-    logger.info("Scheduler started: latency + per-user auto-war + per-user cookie refresh + DB backup")
+    logger.info("Scheduler started: latency + auto-war + cookie refresh + DB backup")

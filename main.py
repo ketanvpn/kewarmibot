@@ -1,4 +1,4 @@
-"""KeWarMiBot — Polling + Scheduler Mode Entry."""
+"""KeWarMiBot — Polling + Scheduler Mode Entry. Single-owner."""
 
 import logging
 import os
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
-    logger.info("Starting KeWarMiBot (polling + scheduler)...")
+    logger.info("Starting KeWarMiBot v3.0 (single-owner, polling + scheduler)...")
 
     os.makedirs("data", exist_ok=True)
 
@@ -75,14 +75,9 @@ async def main():
     await ptb_app.updater.start_polling(allowed_updates=["message", "callback_query"])
     logger.info("Bot started")
 
-    # Start background scheduler (latency monitor + auto-war + countdown)
+    # Start background scheduler
     start_scheduler(get_notifier=_notify)
     logger.info("Scheduler started")
-
-    # Start webhook server for payment callbacks
-    from src.webhook_server import run_webhook_server
-    run_webhook_server(port=8001, notifier=_notify)
-    logger.info("Webhook server started on :8001")
 
     # Keep alive with graceful shutdown
     stop_event = asyncio.Event()

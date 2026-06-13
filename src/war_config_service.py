@@ -1,13 +1,15 @@
-"""War Config persistence — multi-cookie, hero-per-cookie model."""
+"""War Config persistence — single-owner, multi-cookie model."""
 
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.db import WarConfigModel
+from src.config import settings
 
 MAX_COOKIES_PER_WAR = 6
 MAX_HERO_PER_COOKIE = 8
 MAX_TOTAL_HEROES = 12
+
 
 def recommended_hero(num_cookies: int) -> int:
     """Rekomendasi hero per cookie berdasarkan jumlah cookie."""
@@ -16,11 +18,12 @@ def recommended_hero(num_cookies: int) -> int:
     return min(8, max(1, MAX_TOTAL_HEROES // num_cookies))
 
 
-async def get_active_config(session: AsyncSession, owner_chat_id: str) -> WarConfigModel | None:
+async def get_active_config(session: AsyncSession) -> WarConfigModel | None:
+    owner = settings.owner_chat_id
     result = await session.execute(
         select(WarConfigModel).where(
             WarConfigModel.active == True,
-            WarConfigModel.owner_chat_id == owner_chat_id,
+            WarConfigModel.owner_chat_id == owner,
         )
     )
     return result.scalar_one_or_none()
@@ -28,7 +31,6 @@ async def get_active_config(session: AsyncSession, owner_chat_id: str) -> WarCon
 
 async def save_config(
     session: AsyncSession,
-    owner_chat_id: str,
     cookie_ids: list[int],
     hero_per_cookie: int,
     bracket_factor: float,
@@ -39,13 +41,14 @@ async def save_config(
 ) -> WarConfigModel:
     """Create or update active config. cookie_ids clamped to MAX_COOKIES_PER_WAR."""
     from datetime import datetime
-    from src.config import settings
+
+    owner = settings.owner_chat_id
 
     # Clamp
     cookie_ids = cookie_ids[:MAX_COOKIES_PER_WAR]
     hero_per_cookie = max(1, min(hero_per_cookie, MAX_HERO_PER_COOKIE))
 
-    existing = await get_active_config(session, owner_chat_id)
+    existing = await get_active_config(session)
 
     if existing:
         existing.cookie_ids = json.dumps(cookie_ids)
@@ -66,7 +69,7 @@ async def save_config(
             war_hour=war_hour,
             war_minute=war_minute,
             war_tz=war_tz,
-            owner_chat_id=owner_chat_id,
+            owner_chat_id=owner,
             active=True,
         )
         session.add(config)
@@ -76,10 +79,9 @@ async def save_config(
     return config
 
 
-async def load_config(session: AsyncSession, owner_chat_id: str) -> dict:
+async def load_config(session: AsyncSession) -> dict:
     """Load config as dict with safe defaults."""
-    from src.config import settings
-    config = await get_active_config(session, owner_chat_id)
+    config = await get_active_config(session)
 
     if not config:
         return {

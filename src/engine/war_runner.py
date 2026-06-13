@@ -40,6 +40,15 @@ async def execute_war(
     Returns WarResultReport or None if skipped.
     """
     owner = settings.owner_chat_id
+    mode_label = "🔧 DEBUG" if debug else "⚔️ AUTO-WAR"
+
+    # Notif #1: War dimulai sekarang
+    if notify:
+        await notify(owner, (
+            f"🚀 <b>War Dimulai!</b>\n\n"
+            f"Mode: {mode_label}\n"
+            f"<i>Loading cookies...</i>"
+        ))
 
     async with AsyncSessionLocal() as session:
         cfg = await load_config(session)
@@ -53,11 +62,14 @@ async def execute_war(
 
         hero_per_cookie: int = cfg.get("hero_per_cookie", 6)
 
-        # Load cookies, skip won ones
+        # Load cookies, skip won ones — track reasons for notif #2
         cookie_list: list[tuple[str, str]] = []
+        skipped_won: list[str] = []
+        failed_decrypt: list[str] = []
+        not_found: list[str] = []
+
         for cid in selected_ids:
             try:
-                # Check if cookie has_won
                 r = await session.execute(
                     select(CookieModel).where(
                         CookieModel.id == cid,
@@ -66,16 +78,41 @@ async def execute_war(
                 )
                 c = r.scalar_one_or_none()
                 if not c:
+                    not_found.append(f"ID:{cid}")
                     continue
                 if c.has_won:
                     logger.info(f"execute_war: skipping won cookie {c.name}")
+                    skipped_won.append(c.name)
                     continue
 
                 token = await get_cookie_token(session, cid)
                 if token:
                     cookie_list.append((token, c.name))
+                else:
+                    failed_decrypt.append(c.name)
             except Exception as e:
                 logger.error(f"Decrypt failed for cookie {cid}: {e}")
+                # Try to get name for reporting
+                try:
+                    rr = await session.execute(
+                        select(CookieModel.name).where(CookieModel.id == cid)
+                    )
+                    nm = rr.scalar_one_or_none()
+                    failed_decrypt.append(nm or f"ID:{cid}")
+                except Exception:
+                    failed_decrypt.append(f"ID:{cid}")
+
+    # Notif #2: Cookie pre-war breakdown
+    if notify and (skipped_won or failed_decrypt or not_found):
+        lines = ["🍪 <b>Cookie Pre-War</b>\n"]
+        lines.append(f"✅ Loaded: <b>{len(cookie_list)}</b>")
+        if skipped_won:
+            lines.append(f"🏆 Skip (udah menang): {', '.join(skipped_won)}")
+        if failed_decrypt:
+            lines.append(f"🔓 Skip (decrypt gagal): {', '.join(failed_decrypt)}")
+        if not_found:
+            lines.append(f"❓ Skip (gak ditemukan): {', '.join(not_found)}")
+        await notify(owner, "\n".join(lines))
 
     if not cookie_list:
         logger.error("execute_war: no valid cookies loaded")
@@ -98,8 +135,12 @@ async def execute_war(
                 hero_ids_for_proxy = list(range(1, len(proxies) + 1))
                 await pool_consume_batch(session, proxy_ids, hero_ids_for_proxy, war_id=None)
                 logger.info(f"execute_war: allocated {len(proxy_urls)} proxies (cookie 2+ only)")
+                if notify:
+                    await notify(owner, f"🔌 <b>Proxy</b>: {len(proxy_urls)} dialokasikan untuk {num_cookies_need_proxy} cookie")
             else:
                 logger.info("execute_war: no proxies available for cookie 2+, all direct")
+                if notify:
+                    await notify(owner, "⚠️ <b>Proxy pool kosong</b> — cookie 2+ akan direct (risk rate-limit)")
     else:
         logger.info("execute_war: single cookie, direct connection (no proxy needed)")
 
@@ -180,10 +221,47 @@ async def execute_war(
         f"execute_war done: ✅{report.success_count} ❌{report.fail_count}"
     )
 
+    # Collect post-war extras for notification
+    post_war_lines: list[str] = []
+
+    # Notif #5: Cookie auto-lock info
+    if report.success_count > 0:
+        winning_names = set(
+            r.cookie_name for r in report.hero_results if r.success
+        )
+        for cname in winning_names:
+            post_war_lines.append(f"🔒 Cookie <b>{cname}</b> di-lock (dapat tiket) — dihapus dari config")
+
+    # Notif #6: Sisa cookie aktif — read after possible removal
+    async with AsyncSessionLocal() as session:
+        cfg_after = await load_config(session)
+        remaining_ids = cfg_after.get("cookie_ids", [])
+        remaining_names: list[str] = []
+        for rid in remaining_ids:
+            r = await session.execute(
+                select(CookieModel.name).where(
+                    CookieModel.id == rid,
+                    CookieModel.owner_chat_id == owner,
+                )
+            )
+            nm = r.scalar_one_or_none()
+            if nm:
+                remaining_names.append(nm)
+        if remaining_names:
+            post_war_lines.append(f"📦 Sisa cookie untuk besok: <b>{len(remaining_names)}</b> ({', '.join(remaining_names)})")
+        else:
+            post_war_lines.append(f"📦 Sisa cookie: <b>0</b> — tambahkan cookie baru untuk war berikutnya")
+
+    # Notif #7: Proxy terpakai count
+    if proxy_urls:
+        post_war_lines.append(f"🔌 Proxy terpakai: <b>{len(proxy_urls)}</b>")
+
     # Notify
     if notify:
         from src.bot.notify import format_war_notification
         msg = format_war_notification(report)
+        if post_war_lines:
+            msg += "\n" + "\n".join(post_war_lines)
         await notify(owner, msg)
 
     return report

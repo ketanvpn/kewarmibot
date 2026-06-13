@@ -176,7 +176,7 @@ class WarResultReport:
         if has_victory:
             lines.append(f"\n🔥 <b>Total: {self.success_count} tiket berhasil didapat!</b>")
         elif has_near_miss:
-            lines.append(f"\n⚠️ Kuota hampir habis — coba lagi reset berikutnya.")
+            lines.append(f"\n⚠️ Kuota habis — ulangi war besok malam.")
 
         return "\n".join(lines)
 

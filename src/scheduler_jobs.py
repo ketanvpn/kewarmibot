@@ -34,6 +34,11 @@ async def _get_war_time() -> tuple[int, int, str]:
         cfg = await load_config(session)
     return cfg.get("war_hour", 0), cfg.get("war_minute", 0), cfg.get("war_tz", "Asia/Shanghai")
 
+async def _get_war_cfg() -> dict:
+    """Full war config dict."""
+    async with AsyncSessionLocal() as session:
+        return await load_config(session)
+
 
 # ─── Latency Monitor ────────────────────────────────────
 
@@ -149,14 +154,20 @@ def start_scheduler(get_notifier: Callable | None = None):
         try:
             # 5 min warning (once per date)
             if diff == 5 and _warned_date != today:
-                _warned_date = today
-                asyncio.create_task(_war_warning(notify=_notifier))
+                cfg = await _get_war_cfg()
+                if cfg.get("autowar_enabled", True):
+                    _warned_date = today
+                    asyncio.create_task(_war_warning(notify=_notifier))
 
             # 3 min trigger → execute war (once per date)
             if 0 < diff <= 3 and _war_triggered_date != today:
-                _war_triggered_date = today
-                logger.info(f"Auto-war trigger ({diff}min to target)")
-                asyncio.create_task(_run_auto_war(notify=_notifier))
+                cfg = await _get_war_cfg()
+                if cfg.get("autowar_enabled", True):
+                    _war_triggered_date = today
+                    logger.info(f"Auto-war trigger ({diff}min to target)")
+                    asyncio.create_task(_run_auto_war(notify=_notifier))
+                else:
+                    logger.info("Auto-war disabled — skip trigger")
 
         except Exception as e:
             logger.error(f"Dynamic war checker error: {e}")

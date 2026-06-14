@@ -63,12 +63,14 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     selected_count = len(selected_ids)
     hero_per = cfg.get("hero_per_cookie", 6)
+    autowar_on = cfg.get("autowar_enabled", True)
 
     text = (
         f"<b>⚔️ KeWarMiBot</b> <code>v3.0</code>\n"
         f"<i>Xiaomi Bootloader Unlock — Automated War</i>\n"
         f"{SEP}\n"
         f"⏰ Reset: <code>{cd}</code>\n"
+        f"🤖 Auto-War: {'🟢 ON' if autowar_on else '🔴 OFF'}\n"
     )
     if selected_count > 0:
         text += f"🥊 Siap: <b>{selected_count} cookie</b> × <b>{hero_per} hero</b> = <b>{hero_per * selected_count} tembakan</b>\n"
@@ -83,10 +85,13 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🍪 Cookie", callback_data="menu:cookies"),
          InlineKeyboardButton("⚙️ Config", callback_data="menu:config")],
+        [InlineKeyboardButton(
+            f"🤖 Auto-War: {'ON' if autowar_on else 'OFF'}",
+            callback_data="menu:autowar")],
+        [InlineKeyboardButton("⚔️ War Sekarang", callback_data="menu:war_debug"),
+         InlineKeyboardButton("🔌 Proxy Pool", callback_data="pool:menu")],
         [InlineKeyboardButton("📜 Riwayat", callback_data="menu:history"),
          InlineKeyboardButton("📊 Status", callback_data="menu:status")],
-        [InlineKeyboardButton("⚔️ War Debug", callback_data="menu:war_debug"),
-         InlineKeyboardButton("🔌 Proxy Pool", callback_data="pool:menu")],
         [InlineKeyboardButton("📖 Panduan", callback_data="menu:guide")],
     ])
 

@@ -56,6 +56,7 @@ class WarConfigModel(BaseModel):
     war_hour: Mapped[int] = mapped_column(Integer, default=0)
     war_minute: Mapped[int] = mapped_column(Integer, default=0)
     war_tz: Mapped[str] = mapped_column(String(64), default="Asia/Shanghai")
+    autowar_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )

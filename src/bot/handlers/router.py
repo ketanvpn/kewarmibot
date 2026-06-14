@@ -9,7 +9,7 @@ from src.bot.handlers.cookies import (
 )
 from src.bot.handlers.info import menu_status, menu_history, menu_stats
 from src.bot.handlers.config import menu_config, config_set
-from src.bot.handlers.war import war_debug, menu_autowar
+from src.bot.handlers.war import war_debug, menu_autowar, autowar_toggle
 from src.bot.handlers.pool import pool_menu, pool_router, pool_text_input
 from src.bot.handlers.guide import menu_guide, menu_support, menu_email_copy
 
@@ -32,6 +32,7 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "menu:config": menu_config,
         "menu:war_debug": war_debug,
         "menu:autowar": menu_autowar,
+        "menu:autowar_toggle": autowar_toggle,
         "menu:history": menu_history,
         "menu:stats": menu_stats,
         "menu:guide": menu_guide,

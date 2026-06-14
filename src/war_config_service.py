@@ -38,6 +38,7 @@ async def save_config(
     war_hour: int = 0,
     war_minute: int = 0,
     war_tz: str = "Asia/Shanghai",
+    autowar_enabled: bool | None = None,
 ) -> WarConfigModel:
     """Create or update active config. cookie_ids clamped to MAX_COOKIES_PER_WAR."""
     from datetime import datetime
@@ -58,6 +59,8 @@ async def save_config(
         existing.war_hour = war_hour
         existing.war_minute = war_minute
         existing.war_tz = war_tz
+        if autowar_enabled is not None:
+            existing.autowar_enabled = autowar_enabled
         existing.updated_at = datetime.utcnow()
         config = existing
     else:
@@ -69,6 +72,7 @@ async def save_config(
             war_hour=war_hour,
             war_minute=war_minute,
             war_tz=war_tz,
+            autowar_enabled=autowar_enabled if autowar_enabled is not None else True,
             owner_chat_id=owner,
             active=True,
         )
@@ -77,6 +81,28 @@ async def save_config(
     await session.commit()
     await session.refresh(config)
     return config
+
+
+async def set_autowar_enabled(session: AsyncSession, enabled: bool) -> bool:
+    """Toggle auto-war on/off. Creates config row if none exists. Returns new state."""
+    from datetime import datetime
+    config = await get_active_config(session)
+    if config:
+        config.autowar_enabled = enabled
+        config.updated_at = datetime.utcnow()
+    else:
+        config = WarConfigModel(
+            cookie_ids="[]",
+            hero_per_cookie=settings.war_hero_count_default,
+            bracket_factor=settings.war_bracket_factor_default,
+            safety_margin=settings.war_safety_margin_default,
+            autowar_enabled=enabled,
+            owner_chat_id=settings.owner_chat_id,
+            active=True,
+        )
+        session.add(config)
+    await session.commit()
+    return enabled
 
 
 async def load_config(session: AsyncSession) -> dict:
@@ -92,6 +118,7 @@ async def load_config(session: AsyncSession) -> dict:
             "war_hour": 0,
             "war_minute": 0,
             "war_tz": "Asia/Shanghai",
+            "autowar_enabled": True,
         }
 
     return {
@@ -102,4 +129,5 @@ async def load_config(session: AsyncSession) -> dict:
         "war_hour": getattr(config, "war_hour", 0),
         "war_minute": getattr(config, "war_minute", 0),
         "war_tz": getattr(config, "war_tz", "Asia/Shanghai"),
+        "autowar_enabled": getattr(config, "autowar_enabled", True),
     }

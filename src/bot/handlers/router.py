@@ -105,7 +105,7 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await menu_history(update, context)
 
 
-# ─── Text Input Handler ─────────────────────────────────
+# ─── Text Input Handler ─────────────────────────────────────────────
 
 async def text_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle text input for proxy pool add."""
@@ -117,7 +117,17 @@ async def text_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await pool_text_input(update, context)
 
 
-# ─── Application Builder ───────────────────────────────
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log handler errors + notify owner (jangan silent-fail di UI)."""
+    logger.error("Handler error", exc_info=context.error)
+    try:
+        if isinstance(update, Update) and update.callback_query:
+            await update.callback_query.answer("⚠️ Ada error, coba lagi.", show_alert=True)
+    except Exception:
+        pass
+
+
+# ─── Application Builder ───────────────────────────────────────────────
 
 def build_app() -> Application:
     app = Application.builder().token(settings.bot_token).build()
@@ -152,5 +162,7 @@ def build_app() -> Application:
         menu_router,
         pattern="^(menu|cookie|cfg|pool):",
     ))
+
+    app.add_error_handler(error_handler)
 
     return app

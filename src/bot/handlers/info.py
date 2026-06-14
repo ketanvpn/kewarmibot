@@ -1,4 +1,5 @@
 """KeWarMiBot — Status dashboard, history, stats"""
+import time as _time
 from src.bot.handlers._common import *
 
 

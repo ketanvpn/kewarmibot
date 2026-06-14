@@ -53,10 +53,19 @@ async def _save_latency():
 # ─── Auto-War (Single Owner) ─────────────────────────────
 
 async def _run_auto_war(notify: Callable | None = None) -> bool:
-    """Run auto-war for owner."""
+    """Run auto-war for owner. Catches errors → notif owner (jangan silent-fail)."""
     from src.engine.war_runner import execute_war
-    report = await execute_war(debug=False, notify=notify)
-    return report is not None
+    try:
+        report = await execute_war(debug=False, notify=notify)
+        return report is not None
+    except Exception as e:
+        logger.error(f"Auto-war crashed: {e}", exc_info=True)
+        if notify:
+            try:
+                await notify(settings.owner_chat_id, f"❌ <b>Auto-War Gagal!</b>\n\nError: {e}")
+            except Exception:
+                pass
+        return False
 
 
 async def _war_warning(notify: Callable | None = None):
@@ -98,8 +107,8 @@ async def _war_warning(notify: Callable | None = None):
 
 # ─── Main Scheduler Setup ───────────────────────────────
 
-_war_triggered_today = False
-_warned_today = False
+_war_triggered_date: str | None = None
+_warned_date: str | None = None
 
 
 def start_scheduler(get_notifier: Callable | None = None):
@@ -119,7 +128,7 @@ def start_scheduler(get_notifier: Callable | None = None):
     # 2. Dynamic auto-war checker — runs every minute
     async def _dynamic_war_checker():
         """Check every minute: if close to war time → warn or execute."""
-        global _war_triggered_today, _warned_today
+        global _war_triggered_date, _warned_date
 
         wh, wm, tz_name = await _get_war_time()
 
@@ -131,25 +140,21 @@ def start_scheduler(get_notifier: Callable | None = None):
         now = datetime.datetime.now(tz)
         now_minutes = now.hour * 60 + now.minute
         target_minutes = wh * 60 + wm
+        today = now.date().isoformat()
 
         diff = target_minutes - now_minutes
         if diff < 0:
             diff += 24 * 60
 
-        # Reset daily trackers at midnight
-        if now_minutes < 1:
-            _war_triggered_today = False
-            _warned_today = False
-
         try:
-            # 5 min warning
-            if diff == 5 and not _warned_today:
-                _warned_today = True
+            # 5 min warning (once per date)
+            if diff == 5 and _warned_date != today:
+                _warned_date = today
                 asyncio.create_task(_war_warning(notify=_notifier))
 
-            # 3 min trigger → execute war
-            if 0 < diff <= 3 and not _war_triggered_today:
-                _war_triggered_today = True
+            # 3 min trigger → execute war (once per date)
+            if 0 < diff <= 3 and _war_triggered_date != today:
+                _war_triggered_date = today
                 logger.info(f"Auto-war trigger ({diff}min to target)")
                 asyncio.create_task(_run_auto_war(notify=_notifier))
 

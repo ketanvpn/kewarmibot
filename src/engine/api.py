@@ -109,21 +109,55 @@ def _get_core_ids() -> list[int]:
     return cores
 
 
+def _parse_proxy(proxy_url: str) -> tuple[str, int, str | None, str | None]:
+    """Parse proxy string into (host, port, user, pass).
+
+    Supports:
+      - http://user:pass@host:port  (and https://, socks5://)
+      - user:pass@host:port
+      - user:pass:host:port
+      - host:port
+    Password may contain ':' (handled via rsplit on the host:port side).
+    """
+    s = proxy_url.strip()
+    # Strip scheme if present
+    if "://" in s:
+        s = s.split("://", 1)[1]
+
+    user = pwd = None
+
+    if "@" in s:
+        # creds@host:port  — creds may contain ':' in password
+        cred, hostport = s.rsplit("@", 1)
+        if ":" in cred:
+            user, pwd = cred.split(":", 1)
+        else:
+            user = cred
+        host, port = hostport.rsplit(":", 1)
+        return host, int(port), user, pwd
+
+    parts = s.split(":")
+    if len(parts) == 2:
+        # host:port
+        return parts[0], int(parts[1]), None, None
+    if len(parts) >= 4:
+        # user:pass:host:port  (pass may contain ':' → everything between user and host:port)
+        user = parts[0]
+        host = parts[-2]
+        port = parts[-1]
+        pwd = ":".join(parts[1:-2])
+        return host, int(port), user, pwd
+    raise ValueError(f"Invalid proxy format: {proxy_url}")
+
+
 def _connect_via_proxy(proxy_url: str, target_host: str, target_port: int) -> socket.socket:
     """Connect to target via HTTP CONNECT proxy.
-    
-    proxy_url format: user:pass:host:port
-    """
-    parts = proxy_url.split(":")
-    if len(parts) == 4:
-        puser, ppass, phost, pport = parts
-    elif len(parts) == 2:
-        phost, pport = parts
-        puser, ppass = None, None
-    else:
-        raise ValueError(f"Invalid proxy format: {proxy_url}")
 
-    sock = socket.create_connection((phost, int(pport)), timeout=10)
+    Accepts multiple proxy formats (see _parse_proxy).
+    """
+    phost, pport, puser, ppass = _parse_proxy(proxy_url)
+
+    sock = socket.create_connection((phost, pport), timeout=10)
 
     # CONNECT request
     connect_req = f"CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n"

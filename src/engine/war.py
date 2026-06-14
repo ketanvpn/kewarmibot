@@ -292,13 +292,13 @@ def run_war_sync(config: WarConfig) -> WarResultReport:
         token, cname = config.cookies[cookie_idx]
         target_wave = base_send + offset
         core_id = core_ids[i % len(core_ids)] if core_ids else None
-        # Proxy: cookie pertama (idx 0) = direct, cookie 2+ = proxy
+        # Proxy: cookie pertama (idx 0) = direct (IP VPS), cookie 2+ = 1 proxy per cookie.
+        # Semua hero dari cookie yang sama pakai IP yang sama → proxies[cookie_idx - 1].
         if cookie_idx == 0 or not config.proxies:
             proxy_url = None
         else:
-            # Round-robin proxy untuk cookie 2+
-            proxy_idx = (i // num_cookies) % len(config.proxies) if config.proxies else 0
-            proxy_url = config.proxies[proxy_idx] if config.proxies else None
+            pidx = cookie_idx - 1
+            proxy_url = config.proxies[pidx] if pidx < len(config.proxies) else None
         p = mp.Process(
             target=_war_worker,
             args=(hero_id, target_wave, token, cname, base_time, base_perf, ntp_offset, core_id, proxy_url, result_queue),

@@ -121,26 +121,44 @@ async def execute_war(
         return None
 
     # Allocate proxies from pool (if available)
-    # Rule: cookie pertama = direct (no proxy), cookie ke-2+ = pake proxy
+    # Rule: cookie 1 = direct (IP VPS), cookie 2+ = 1 proxy per cookie (semua hero cookie itu pakai 1 IP sama)
+    # Opsi C: kalau proxy kurang, cookie yang gak kebagian proxy DI-SKIP (jangan rebutan IP VPS)
     proxy_urls: list[str] = []
     num_cookies_need_proxy = len(cookie_list) - 1  # cookie pertama gak perlu
-    heroes_need_proxy = hero_per_cookie * num_cookies_need_proxy if num_cookies_need_proxy > 0 else 0
 
-    if heroes_need_proxy > 0:
+    if num_cookies_need_proxy > 0:
         async with AsyncSessionLocal() as session:
-            proxies = await pool_allocate(session, owner, heroes_need_proxy)
+            proxies = await pool_allocate(session, owner, num_cookies_need_proxy)
+            available = len(proxies)
+
+            # Opsi C: trim cookie yang gak kebagian proxy
+            skipped_no_proxy: list[str] = []
+            if available < num_cookies_need_proxy:
+                keep = 1 + available  # cookie 1 (direct) + cookie yang dapat proxy
+                skipped_no_proxy = [name for _, name in cookie_list[keep:]]
+                cookie_list = cookie_list[:keep]
+
             if proxies:
                 proxy_urls = [p.proxy_url for p in proxies]
                 proxy_ids = [p.id for p in proxies]
-                hero_ids_for_proxy = list(range(1, len(proxies) + 1))
-                await pool_consume_batch(session, proxy_ids, hero_ids_for_proxy, war_id=None)
-                logger.info(f"execute_war: allocated {len(proxy_urls)} proxies (cookie 2+ only)")
+                # 1 proxy = 1 cookie; tandai used pakai index cookie (1-based) sebagai marker
+                await pool_consume_batch(session, proxy_ids, list(range(1, len(proxies) + 1)), war_id=None)
+                logger.info(f"execute_war: allocated {len(proxy_urls)} proxy untuk {len(proxy_urls)} cookie (1 proxy/cookie)")
                 if notify:
-                    await notify(owner, f"🔌 <b>Proxy</b>: {len(proxy_urls)} dialokasikan untuk {num_cookies_need_proxy} cookie")
+                    note = f"🔌 <b>Proxy</b>: {len(proxy_urls)} dialokasikan (1 IP per cookie)"
+                    if skipped_no_proxy:
+                        note += f"\n⚠️ Proxy kurang — cookie di-skip: {', '.join(skipped_no_proxy)}"
+                    await notify(owner, note)
             else:
-                logger.info("execute_war: no proxies available for cookie 2+, all direct")
+                # Pool kosong total: cuma cookie 1 yang jalan (direct), sisanya skip
+                skipped_no_proxy = [name for _, name in cookie_list[1:]]
+                cookie_list = cookie_list[:1]
+                logger.info("execute_war: proxy pool kosong — cuma cookie 1 (direct), sisanya skip")
                 if notify:
-                    await notify(owner, "⚠️ <b>Proxy pool kosong</b> — cookie 2+ akan direct (risk rate-limit)")
+                    await notify(owner, (
+                        "⚠️ <b>Proxy pool kosong</b>\n"
+                        f"Cuma cookie 1 jalan (IP VPS). Di-skip: {', '.join(skipped_no_proxy)}"
+                    ))
     else:
         logger.info("execute_war: single cookie, direct connection (no proxy needed)")
 
